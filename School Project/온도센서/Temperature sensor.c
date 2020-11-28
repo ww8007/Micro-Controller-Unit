@@ -21,7 +21,7 @@
 #define SW5_PUSH        0xDF00  //PH13
 #define SW6_PUSH        0xBF00  //PH14
 #define SW7_PUSH        0x7F00  //PH15
-
+#define RGB_PINK GET_RGB(255,169,214)
 void DispayTitle(void);
 void _GPIO_Init(void);
 void _ADC_Init(void);
@@ -64,6 +64,7 @@ int barTemp = 0;
 uint8_t str[20];
 int start = 0;
 uint16_t ADC_Value2, Voltage2;
+uint16_t Temp2;
 void ADC_IRQHandler(void)
 {
     if (ADC3->SR)
@@ -120,18 +121,25 @@ void ADC_IRQHandler(void)
     if (ADC1->SR)
     {
         ADC1->SR &= ~(1 << 1);      // EOC flag clear
-        if (check == 1)
+        if (start == 2)
         {
-            Dis();
-            check = 2;
-        }
-        ADC_Value2 = ADC1->DR;
+            ADC_Value2 = ADC1->DR;
+            Voltage2 = ADC_Value2 * 330 / 4095;
+            Temp2 = ((Voltage2 - 76) * 4 + 25) * 10;
 
-        Voltage2 = ((((ADC_Value2 - 0.76) / 2.5) + 25)) * 10;
-        LCD_SetTextColor(RGB_RED);      //글자색 : 빨강
-        LCD_DisplayChar(1, 11, Voltage2 / 100 + 0x30);          //내부온도 10의자리
-        LCD_DisplayChar(1, 12, Voltage2 % 100 / 10 + 0x30);     //내부온도 1의자리
-        LCD_DisplayChar(1, 14, Voltage2 % 10 + 0x30);         //내부온도 0.1의자리
+
+
+            LCD_SetTextColor(RGB_RED);      //글자색 : 빨강
+            LCD_DisplayChar(1, 11, Temp2 / 100 + 0x30);          //내부온도 10의자리
+            LCD_DisplayChar(1, 12, Temp2 % 100 / 10 + 0x30);     //내부온도 1의자리
+            LCD_DisplayChar(1, 14, Temp2 % 10 + 0x30);         //내부온도 0.1의자리
+
+            LCD_SetBrushColor(RGB_YELLOW);
+            LCD_DrawFillRect(10, 30, 140, 12);
+            LCD_SetBrushColor(RGB_PINK);
+            LCD_DrawRectangle(9, 29, 141, 13);
+            LCD_DrawFillRect(10, 30, Temp2 / 10 * 2, 12);
+        }
     }
 
 }
@@ -277,7 +285,7 @@ void _ADC_Init(void)
 
     ADC3->CR1 &= ~(3 << 24);      // RES[1:0]=0b00 : 12bit Resolution
     ADC3->CR1 &= ~(1 << 8);      // SCAN=0 : ADC_ScanCovMode Disable
-    ADC3->CR1 |= (1 << 5);      // EOCIE=1: Interrupt enable for EOC
+    //ADC3->CR1 |= (1 << 5);      // EOCIE=1: Interrupt enable for EOC
 
     ADC3->CR2 &= ~(1 << 1);      // CONT=0: ADC_Continuous ConvMode Disable
     ADC3->CR2 |= (2 << 28);      // EXTEN[1:0]: ADC_ExternalTrigConvEdge_Enable(Falling Edge)
@@ -294,42 +302,38 @@ void _ADC_Init(void)
 
     NVIC->ISER[0] |= (1 << 18);   // Enable ADC global Interrupt
 
-    ADC3->CR2 |= (1 << 0);      // ADON: ADC ON
+
 
 
 
     //RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;   // (1<<0) ENABLE GPIOA CLK (stm32f4xx.h 참조)
    //GPIOA->MODER |= (3<<2*1);      // CONFIG GPIOA PIN3(PA3) TO ANALOG IN MODE
 
-    RCC->APB2ENR |= RCC_APB2ENR_ADC1EN;   // (1<<10) ENABLE ADC3 CLK (stm32f4xx.h 참조)
+    RCC->APB2ENR |= RCC_APB2ENR_ADC1EN;	// (1<<8) ENABLE ADC3 CLK (stm32f4xx.h 참조)
 
-    ADC->CCR &= ~(0X1F << 0);      // MULTI[4:0]: ADC_Mode_Independent
-    ADC->CCR |= (1 << 16);       // 0x00010000 ADCPRE:ADC_Prescaler_Div4 (ADC MAX Clock 36MHz, 84Mhz(APB2)/4 = 21MHz)
-    ADC->CCR |= (1 << 23);       // Temperature Sensor Enable
+    ADC->CCR &= ~(0X1F << 0);		// MULTI[4:0]: ADC_Mode_Independent
+    ADC->CCR |= (1 << 16); 		// 0x00010000 ADCPRE:ADC_Prescaler_Div4 (ADC MAX Clock 36MHz, 84Mhz(APB2)/4 = 21MHz)
+    ADC->CCR |= (1 << 23);
 
-    ADC1->CR1 &= ~(3 << 24);      // RES[1:0]=0b00 : 12bit Resolution
-    ADC1->CR1 &= ~(1 << 8);      // SCAN=0 : ADC_ScanCovMode Disable
-    ADC1->CR1 |= (1 << 5);      // EOCIE=1: Interrupt enable for EOC
-    ADC1->CR1 |= (1 << 4);      // Input 16 Channel
+    ADC1->CR1 &= (1 << 24);		// RES[1:0]= 0b01 : 10bit Resolution
+    ADC1->CR1 &= ~(1 << 8);		// SCAN=0 : ADC_ScanCovMode Disable
+    ADC1->CR1 |= (1 << 5);		// EOCIE=1: Interrupt enable for EOC
 
-    ADC1->CR2 &= ~(1 << 1);      // CONT=0: ADC_Continuous ConvMode Disable
-    ADC1->CR2 |= (2 << 28);      // EXTEN[1:0]: ADC_ExternalTrigConvEdge_Enable(Falling Edge)
-    //ADC1->CR2 |= (0x0D<<24);   // EXTSEL[3:0]: ADC_ExternalTrig (TIM8_CC1)
-    ADC1->CR2 &= ~(1 << 11);      // ALIGN=0: ADC_DataAlign_Right
-    ADC1->CR2 &= ~(1 << 10);      // EOCS=0: The EOC bit is set at the end of each sequence of regular conversions
- //    ADC1->CR2 |= (1<<30);     //CR2.SWSTART Enable
+    ADC1->CR2 &= ~(1 << 1);		// CONT=0: ADC_Continuous ConvMode Disable
+    ADC1->CR2 |= (2 << 28);		// EXTEN[1:0]: ADC_ExternalTrigConvEdge_Enable(Falling Edge)
+    ADC1->CR2 |= (0x0D << 24);	// TIM8_CC1 Event
+    ADC1->CR2 &= ~(1 << 11);		// ALIGN=0: ADC_DataAlign_Right
+    ADC1->CR2 &= ~(1 << 10);		// EOCS=0: The EOC bit is set at the end of each sequence of regular conversions
 
-    ADC1->SQR1 &= ~(0xF << 20);   // L[3:0]=0b0000: ADC Regular channel sequece length 
-                // 0b0000:1 conversion)
-     //Channel selection, The Conversion Sequence of PIN1(ADC1_CH1) is first, Config sequence Range is possible from 0 to 17
-    ADC1->SQR3 |= (1 << 15);      // SQ1[4:0]=0b0001 : CH1
+    ADC1->SQR1 &= ~(0xF << 20);	// L[3:0]=0b0000: ADC Regular channel sequece length 
+                    // 0b0000:1 conversion)
+    //Channel selection, The Conversion Sequence of PIN1(ADC3_CH1) is first, Config sequence Range is possible from 0 to 17
+    ADC1->SQR3 |= (16 << 0);		// SQ1[4:0]=0b10000 : CH6
+    ADC1->SMPR2 |= (0x7 << (3 * 1));	// ADC3_CH1 Sample TIme_480Cycles (3*Channel_1)
+//Channel selection, The Conversion Sequence of PIN1(ADC3_CH1) is first, Config sequence Range is possible from 0 to 17
 
-    ADC1->SMPR1 |= (0x7 << (3 * 6));   // ADC1_CH16 Sample TIme_480Cycles (3*Channel_16)
-    //Channel selection, The Conversion Sequence of PIN1(ADC1_CH1) is first, Config sequence Range is possible from 0 to 17
-
-    NVIC->ISER[0] |= (1 << 18);   // Enable ADC global Interrupt
-
-    ADC1->CR2 |= (1 << 0);      // ADON: ADC ON
+    ADC1->CR2 |= (1 << 0);		// ADON: ADC ON
+    ADC3->CR2 |= (1 << 0);		// ADON: ADC ON
 
 }
 void TIMER8_Init(void)
@@ -428,7 +432,11 @@ void USART1_IRQHandler(void)
             USART1->CR1 &= ~(1 << 7);  // TXE interrupt Disable
     }
 }
-
+int mycnt = 0;
+int mycnt2 = 0;
+uint8_t str2[20];
+int Qsize = 0;
+int k = 0;
 void UART4_IRQHandler(void)
 {
     UINT8 ch1;
@@ -437,6 +445,7 @@ void UART4_IRQHandler(void)
     {
         //      UART4->SR &= ~USART_SR_RXNE;
         ch1 = UART4->DR;   // 수신된 문자 저장
+
 
         if ((CRdata_BT == 0) && (ch1 == 0x0D))
         {
@@ -448,14 +457,51 @@ void UART4_IRQHandler(void)
 
         if ((ch1 != 0x0D) && (ch1 != 0x0A))
         {
-            if (ch1 == '1')
+            str2[k] = ch1;
+            k++;
+            for (int i = 0; i < k; i++)
             {
-                start = 1;
+                if (str2[i] == '1')
+                {
+                    mycnt++;
+
+                    if (mycnt == 1)
+                    {
+                        for (int j = 0; j < 20; j++)
+                        {
+                            str2[i] = NULL;
+
+                        }
+                        DispayTitle();
+                        mycnt = 0;
+                        mycnt2 = 0;
+                        start = 1;
+                        k = 0;
+                    }
+                }
+                else if (str2[i] == '2')
+                {
+                    mycnt2++;
+
+                    if (mycnt2 == 1)
+                    {
+                        for (int j = 0; j < 20; j++)
+                        {
+                            str2[i] = NULL;
+
+                        }
+                    }
+                    Dis();
+                    mycnt = 0;
+                    mycnt2 = 0;
+                    start = 2;
+                    k = 0;
+                }
             }
-            else if (ch1 == '2')
-            {
-                start = 2;
-            }
+
+
+
+            LCD_DisplayText(6, 6, str2);
         }
 
         // BT에서 보낸 데이터를 rxQue[2]에 저장
@@ -719,6 +765,8 @@ void DispayTitle(void)
     LCD_SetPenColor(RGB_GREEN);      //펜색 : 초록
     LCD_DrawRectangle(10, 28, 139, 10);
     LCD_DrawFillRect(11, 29, 138, 9);
+    LCD_DisplayChar(7, 6, mycnt + 0x30);
+    LCD_DisplayChar(9, 6, mycnt2 + 0x30);
 }
 void Dis(void)
 {
@@ -743,6 +791,8 @@ void Dis(void)
     LCD_SetPenColor(RGB_RED);      //펜색 : 초록
     LCD_DrawRectangle(10, 28, 139, 10);
     LCD_DrawFillRect(11, 29, 138, 9);
+    LCD_DisplayChar(7, 6, mycnt + 0x30);
+    LCD_DisplayChar(9, 6, mycnt2 + 0x30);
 }
 
 void DelayMS(unsigned short wMS)
