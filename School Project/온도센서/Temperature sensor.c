@@ -1,16 +1,15 @@
 //////////////////////////////////////////////////////////////////////
-// USART RX Interrupt 
-// USART1(PC): TX pin: PA9,  RX pin: PA10 
-// UART4(BT):  TX pin: PC10, RX pin: PC11, RST pin(GPIO): PC13
-// TX: Interrupt 방식, RX: Interrupt 방식 
-// 문자를 TX를 통해 PC(Hyper terminal)로 전송하고, 
-// PC에서 보내온 문자를 받아 LCD에 표시
+//HW 3.1 외부 온도, 내부 온도 측정 HW
+//제출자 2015130035 장동현
+//TUE 02
+// 블루투스 연결 BT SCAN 전까지의 자동
+//BT NAME = TUE 02
+//SW2 누를 시 BTSCAN
 //////////////////////////////////////////////////////////////////////
 #include "stm32f4xx.h"
 #include "GLCD.h"
 #include "default.h"
 #include "Util.h"
-
 #include "Que.h"
 
 #define SW0_PUSH        0xFE00  //PH8
@@ -46,6 +45,7 @@ void DelayMS(unsigned short wMS);
 void DelayUS(unsigned short wUS);
 void BEEP(void);
 void Dis(void);
+void Connect(void);
 UINT8 strBuffer[2][100];
 UINT8 strBufferIdx[2];
 UINT8 size;
@@ -53,36 +53,34 @@ UINT8 data;
 UINT8 ch;
 UINT8 no_PC, no_BT, CRdata_PC, CRdata_BT;
 uint16_t ADC_Value, Voltage;
-double on;
-int val;
-int vol;
-double check;
-int a;
-int b;
-int Temp;
-int barTemp = 0;
-uint8_t str[20];
-int start = 0;
-uint16_t ADC_Value2, Voltage2;
-uint16_t Temp2;
+int val;                      //외부온도 변수
+int vol;                      //외부온도 변수            
+int on;                      //외부온도 변수
+int syscount = 0;
+double check;                      //외부온도 변수
+int Temp;                       //내부온도 변수
+int barTemp = 0;                //내부온도 변수
+uint8_t str[20];                //통신용 변수
+int start = 0;                  //내부, 외부 판단 변수
+uint16_t ADC_Value2, Voltage2;  //외부온도 변수
+uint16_t Temp2;                 //외부온도 전압 변수
 void ADC_IRQHandler(void)
 {
+    syscount++;
+    if (syscount > 1)
+    {
+    }
     if (ADC3->SR)
     {
         ADC3->SR &= ~(1 << 1);      // EOC flag clear
-        if (start == 1)
+        if (start == 1)             // BT 내부 온도 센서
         {
             ADC3->SR &= ~(1 << 1);      // EOC flag clear
-
             ADC_Value = ADC3->DR;      // Reading ADC result
-            on = ADC3->DR;
-
             Voltage = ADC_Value * (3.3 * 100) / 4095;   // 3.3 : 4095 =  Volatge : ADC_Value 
             // 1 : 4095
-            Temp = ((Voltage * Voltage * 3.5 / 10000) + 1) * 10;
-
-            LCD_SetBrushColor(RGB_YELLOW);                                    // 100:  소수점아래 두자리까지 표시하기 위한 값  
-
+            Temp = ((Voltage * Voltage * 3.5 / 10000) + 1) * 10;            // 온도 값 계산
+            LCD_SetBrushColor(RGB_YELLOW);
             LCD_SetTextColor(RGB_RED);      //글자색 : 빨강
             LCD_DisplayChar(1, 18, Voltage / 100 + 0x30);
             LCD_DisplayChar(1, 20, Voltage % 100 / 10 + 0x30);
@@ -91,63 +89,49 @@ void ADC_IRQHandler(void)
             LCD_DisplayChar(1, 11, Temp / 100 + 0x30);
             LCD_DisplayChar(1, 12, Temp % 100 / 10 + 0x30);
             LCD_DisplayChar(1, 14, Temp % 10 + 0x30);
-
             barTemp = Temp / 10;
-            if (barTemp == 39)
+            if (barTemp == 39)           // 바가 꽉찬경우
             {
                 LCD_SetBrushColor(RGB_GREEN);
                 LCD_DrawFillRect(11, 29, 138, 9); // 138 - 11 = 127
             }
             else
             {
-
                 val = (4095 - on) / 4095 * 137; // 볼티지 오른쪽 나머지 왼쪽
-
-                vol = barTemp * 137 / 39;
-                a = val;
-                b = vol;
-
+                vol = barTemp * 137 / 39;       // 전압 값 39등분
                 LCD_SetBrushColor(RGB_YELLOW);
                 LCD_DrawFillRect((11 + vol), 29, 137, 9); // 138 - 11 = 127
                 LCD_SetBrushColor(RGB_GREEN);
                 LCD_DrawFillRect(11, 29, vol, 9); // 138 - 11 = 127
                 LCD_SetPenColor(RGB_GREEN);      //펜색 : 초록
-                LCD_DrawRectangle(10, 28, 139, 10);
-
-
+                LCD_DrawRectangle(10, 28, 139, 9);
             }
         }
     }
     if (ADC1->SR)
     {
         ADC1->SR &= ~(1 << 1);      // EOC flag clear
-        if (start == 2)
+        if (start == 2)             // BT 내부 온도 센서
         {
-            ADC_Value2 = ADC1->DR;
-            Voltage2 = ADC_Value2 * 330 / 4095;
-            Temp2 = ((Voltage2 - 76) * 4 + 25) * 10;
-
-
-
+            ADC_Value2 = ADC1->DR;                              //측정값 받아오기
+            Voltage2 = ADC_Value2 * 330 / 4095;                 //전압값 계산
+            Temp2 = ((Voltage2 - 76) * 4 + 25) * 10;            // 계산식 적용
             LCD_SetTextColor(RGB_RED);      //글자색 : 빨강
             LCD_DisplayChar(1, 11, Temp2 / 100 + 0x30);          //내부온도 10의자리
             LCD_DisplayChar(1, 12, Temp2 % 100 / 10 + 0x30);     //내부온도 1의자리
             LCD_DisplayChar(1, 14, Temp2 % 10 + 0x30);         //내부온도 0.1의자리
-
-            LCD_SetBrushColor(RGB_YELLOW);
-            LCD_DrawFillRect(10, 30, 140, 12);
-            LCD_SetBrushColor(RGB_PINK);
-            LCD_DrawRectangle(9, 29, 141, 13);
-            LCD_DrawFillRect(10, 30, Temp2 / 10 * 2, 12);
+            LCD_SetBrushColor(RGB_YELLOW);                     //브러쉬색 : 노랑
+            LCD_DrawFillRect(11, 27, 137, 9);                  //사각형 채우기
+            LCD_SetBrushColor(RGB_PINK);                       //브러쉬색 : 핑크 
+            LCD_DrawRectangle(10, 27, 138, 10);                //사각형 그려주기
+            LCD_DrawFillRect(11, 27, Temp2 / 10 * 2, 9);       //사각형 채우기
         }
     }
-
 }
 int main(void)
 {
     LCD_Init();   // LCD 구동 함수
     DelayMS(100);   // LCD구동 딜레이
-
     _GPIO_Init();
     TIMER8_Init();
     _ADC_Init();
@@ -157,120 +141,43 @@ int main(void)
     Que_Clear(&rxQue[1]);
     Que_Clear(&txQue[2]);   // BT(UART4) QUEUE clear
     Que_Clear(&rxQue[2]);
-
     GPIOG->ODR &= 0x00;   // LED0~7 Off 
     DispayTitle();   //LCD 초기화면구동 함수
-
-
+    Connect();       //블루투스 연결 함수
+    LCD_SetBackColor(RGB_WHITE);
+    LCD_DisplayText(6, 0, "BT MODE AUTO");              //블루투스 설명
+    LCD_DisplayText(7, 0, "BT NAME TUE 02");
+    LCD_DisplayText(8, 0, "SW1 : BT TURN OFF");
+    LCD_DisplayText(9, 0, "SW2 : BT SCAN");
+    LCD_SetBackColor(RGB_YELLOW);
     strBufferIdx[0] = 0;
     strBufferIdx[1] = 0;
+
+
+    int btcnt = 0;
     while (1)
     {
-        ADC1->CR2 |= (1 << 30);
-        DelayMS(300);
+
+        if (start == 2)             //내부 온도 모드 일시
+        {
+            ADC1->CR2 |= (1 << 30);
+            DelayMS(300);           //내부 온도 센서 값 받아오는 속도 너무 빨라 딜레이 적용
+        }
         switch (KEY_Scan())
         {
-        case SW0_PUSH:       //SW0
-            GPIOG->ODR |= 0x01;   // LED0 On
+        case SW1_PUSH:       //SW0
+            GPIOG->ODR ^= 0x01;   // LED0 On
             SerialSendString_BT("AT+BTCANCEL"); // BT module 연결 해제
             SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
             SerialSendString_PC("AT+BTCANCEL"); // BT module 연결 해제
             ADC1->CR2 |= (1 << 30);
             break;
-        case SW1_PUSH:       //SW1
-            GPIOG->ODR |= 0x02;   // LED1 On
-            SerialSendString_BT("AT"); // BT module 연결 확인
-            SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
-            SerialSendString_PC("AT"); // BT module 연결 해제
+        case SW2_PUSH:       //SW0
+            GPIOG->ODR ^= 0x02;// LED1 On
+            SerialSendString_BT("AT+BTSCAN");
+            SerialSendChar_BT(0x0D); // USART1을 통해 PC로 “HELLO! ” 문자열을 전송
             break;
-        case SW2_PUSH:       //SW2
-            GPIOG->ODR |= 0x04;   // LED2 On
-            SerialSendString_BT("AT+BTSCAN"); // BT module 을 외부 BT 기기(Master)에서 찾게 하기 위한 명령
-            SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
-            SerialSendString_PC("AT+BTSCAN"); // BT module 연결 해제
-            break;
-        case SW3_PUSH:       //SW3
-            GPIOG->ODR |= 0x08;   // LED3 On
-            SerialSendString_BT("AT+BTNAME=KPU1"); // BT module 이름 설정(변경)
-            SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
-            SerialSendString_PC("AT+BTNAME=KPU1"); // BT module 연결 해제
-            break;
-        case SW4_PUSH:       //SW4
-            GPIOG->ODR |= 0x10;   // LED4 On
-            SerialSendString_BT("ATZ"); // BT 명령후에 명령 인식을 위한 소프트웨어 리셋
-            SerialSendChar_BT(0x0D);  // CR(Carriage Return : 0x0D)
-            SerialSendString_PC("ATZ"); // BT module 연결 해제
-            break;
-        case SW5_PUSH:       //SW5
-            GPIOG->ODR |= 0x20;   // LED5 On
-            SerialSendString_BT("AT+BTINFO?0"); // BT module 이름 확인
-            SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
-            SerialSendString_PC("AT+BTINFO?0"); // BT module 연결 해제
-            break;
-        case SW6_PUSH:       //SW6
-            GPIOG->ODR |= 0x40;   // LED6 On
-            SerialSendChar_BT('B'); // 일반 데이터 전송 
-            SerialSendChar_PC('B'); // PC 통신 확인을 위한 문자 전송
-            break;
-        case SW7_PUSH:       //SW7
-            GPIOG->ODR |= 0x80;   // LED7 On
-            SerialSendChar_PC('P'); // PC 통신 확인을 위한 문자 전송
-            break;
-
         }
-
-
-        // PC --> BT
-        size = IUART_GetSize(1); // PC용 QUEUE buffer (USART1)
-        if (size != 0)
-        {
-            for (int i = 0; i < size; i++)
-            {
-                IUART_GetData(1, &data);  // Get data from PC_RX_Queue
-                IUART_SendData(2, data);  // Send data to BT_TX_Queue
-                if (data == '\r')  // CR(carriage return: 0x0D)
-                {
-                    LCD_DisplayText(2, 0, "                            ");
-                    LCD_DisplayText(2, 0, strBuffer[0]);
-
-                    strBufferIdx[0] = 0;
-                    for (int j = 0; j < 100; j++)
-                        strBuffer[0][j] = 0;
-                }
-                else if (data != '\n') // LF(Line Feed: 0x0A)
-                {
-                    strBuffer[0][strBufferIdx[0]++] = data;
-                }
-            }
-            UART4->CR1 |= (1 << 7);   // TXE interrupt Enable
-
-        } // if(size != 0)
-
-        // BT --> PC
-        size = IUART_GetSize(2);  // BT용 QUEUE buffer
-        if (size != 0)
-        {
-            for (int i = 0; i < size; i++)
-            {
-                IUART_GetData(2, &data); // Get data from BT_RX_Queue
-                IUART_SendData(1, data); // Send data to PC_TX_Queue
-                if (data == '\r') // 0x0D
-                {
-                    LCD_DisplayText(5, 0, "                             ");
-                    LCD_DisplayText(5, 0, strBuffer[1]);
-
-                    strBufferIdx[1] = 0;
-                    for (int j = 0; j < 100; j++)
-                        strBuffer[1][j] = 0;
-                }
-                else if (data != '\n') // 0x0A
-                {
-                    strBuffer[1][strBufferIdx[1]++] = data;
-                }
-            }
-            USART1->CR1 |= (1 << 7);   // TXE interrupt Enable
-        }  // if(size != 0)    
-
     }
 }
 void _ADC_Init(void)
@@ -278,14 +185,14 @@ void _ADC_Init(void)
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;   // (1<<0) ENABLE GPIOA CLK (stm32f4xx.h 참조)
     GPIOA->MODER |= (3 << 2 * 1);      // CONFIG GPIOA PIN3(PA3) TO ANALOG IN MODE
 
-    RCC->APB2ENR |= RCC_APB2ENR_ADC3EN;   // (1<<10) ENABLE ADC3 CLK (stm32f4xx.h 참조)
+    RCC->APB2ENR |= RCC_APB2ENR_ADC3EN;   // (1<<8) ENABLE ADC3 CLK (stm32f4xx.h 참조)
 
     ADC->CCR &= ~(0X1F << 0);      // MULTI[4:0]: ADC_Mode_Independent
     ADC->CCR |= (1 << 16);       // 0x00010000 ADCPRE:ADC_Prescaler_Div4 (ADC MAX Clock 36MHz, 84Mhz(APB2)/4 = 21MHz)
 
     ADC3->CR1 &= ~(3 << 24);      // RES[1:0]=0b00 : 12bit Resolution
     ADC3->CR1 &= ~(1 << 8);      // SCAN=0 : ADC_ScanCovMode Disable
-    //ADC3->CR1 |= (1 << 5);      // EOCIE=1: Interrupt enable for EOC
+    ADC3->CR1 |= (1 << 5);      // EOCIE=1: Interrupt enable for EOC
 
     ADC3->CR2 &= ~(1 << 1);      // CONT=0: ADC_Continuous ConvMode Disable
     ADC3->CR2 |= (2 << 28);      // EXTEN[1:0]: ADC_ExternalTrigConvEdge_Enable(Falling Edge)
@@ -315,13 +222,12 @@ void _ADC_Init(void)
     ADC->CCR |= (1 << 16); 		// 0x00010000 ADCPRE:ADC_Prescaler_Div4 (ADC MAX Clock 36MHz, 84Mhz(APB2)/4 = 21MHz)
     ADC->CCR |= (1 << 23);
 
-    ADC1->CR1 &= (1 << 24);		// RES[1:0]= 0b01 : 10bit Resolution
+    ADC1->CR1 &= ~(3 << 24);		// RES[1:0]= 0b00 : 12bit Resolution
     ADC1->CR1 &= ~(1 << 8);		// SCAN=0 : ADC_ScanCovMode Disable
     ADC1->CR1 |= (1 << 5);		// EOCIE=1: Interrupt enable for EOC
 
     ADC1->CR2 &= ~(1 << 1);		// CONT=0: ADC_Continuous ConvMode Disable
     ADC1->CR2 |= (2 << 28);		// EXTEN[1:0]: ADC_ExternalTrigConvEdge_Enable(Falling Edge)
-    ADC1->CR2 |= (0x0D << 24);	// TIM8_CC1 Event
     ADC1->CR2 &= ~(1 << 11);		// ALIGN=0: ADC_DataAlign_Right
     ADC1->CR2 &= ~(1 << 10);		// EOCS=0: The EOC bit is set at the end of each sequence of regular conversions
 
@@ -338,8 +244,9 @@ void _ADC_Init(void)
 }
 void TIMER8_Init(void)
 {
-    // TIM8_CH1 (PI5) : 200ms 인터럽트 발생
-    // Clock Enable : GPIOI & TIMER5
+    // TIM8_CH1 PI5 
+    // 인터럽트 주기 : 200ms
+    // Clock Enable : GPIOI & TIMER8
     RCC->AHB1ENR |= (1 << 8);   // GPIOI Enable
     RCC->APB2ENR |= (1 << 1);   // TIMER8 Enable 
 
@@ -351,8 +258,8 @@ void TIMER8_Init(void)
              // PI5 ==> TIM8_CH1
 
     // Assign 'Interrupt Period' and 'Output Pulse Period'
-    TIM8->PSC = 840 - 1;   // Prescaler 168MHz/840 = 0.2MHz (5us)
-    TIM8->ARR = 40000 - 1;   // Auto reload  : 5us * 40K = 400ms(period)
+    TIM8->PSC = 1680 - 1;   // Prescaler 168MHz/1680 = 0.1MHz (10us)
+    TIM8->ARR = 20000 - 1;   // Auto reload  : 10us * 20K = 200ms(period)
 
     // CR1 : Up counting
     TIM8->CR1 &= ~(1 << 4);   // DIR=0(Up counter)(reset state)
@@ -377,18 +284,18 @@ void TIMER8_Init(void)
     // Disable Tim8 Update interrupt
 
     // Define the corresponding pin by 'Output'  
-    TIM8->CCER |= (1 << 0);   // CC1E=1: CC1 channel Output Enable
+    TIM8->CCER |= (1 << 0);   // CC3E=1: CC3 channel Output Enable
            // OC1(TIM8_CH1) Active: 해당핀을 통해 신호출력
-    TIM8->CCER &= ~(1 << 1);   // CC1P=0: CC1channel Output Polarity (OCPolarity_High : OC1으로 반전없이 출력)  
+    TIM8->CCER &= ~(1 << 1);   // CC3P=0: CC1channel Output Polarity (OCPolarity_High : OC1으로 반전없이 출력)  
     TIM8->BDTR |= (1 << 15);
 
     // 'Mode' Selection : Output mode, toggle  
-    TIM8->CCMR1 &= ~(3 << 0); // CC1S(CC1 channel) = '0b00' : Output 
-    TIM8->CCMR1 &= ~(1 << 3); // OC1P=0: Output Compare 1 preload disable
-    TIM8->CCMR1 |= (3 << 4);   // OC1M=0b011: Output Compare 1 Mode : toggle
-           // OC1REF toggles when CNT = CCR1
+    TIM8->CCMR1 &= ~(3 << 0); // CC3S(CC1 channel) = '0b00' : Output 
+    TIM8->CCMR1 &= ~(1 << 3); // OC3P=0: Output Compare 3 preload disable
+    TIM8->CCMR1 |= (3 << 4);   // OC3M=0b011: Output Compare 3 Mode : toggle
+           // OC1REF toggles when CNT = CCR3
 
-    TIM8->CCR1 = 30000;   // TIM8 CCR1 TIM8_Pulse
+    TIM8->CCR1 = 10000;   // TIM8 CCR3 TIM8_Pulse
 
     ////////////////////////////////
     // Disable Tim8 CC1 interrupt
@@ -432,10 +339,9 @@ void USART1_IRQHandler(void)
             USART1->CR1 &= ~(1 << 7);  // TXE interrupt Disable
     }
 }
-int mycnt = 0;
-int mycnt2 = 0;
-uint8_t str2[20];
-int Qsize = 0;
+int mycnt = 0;      //1 카운트 변수
+int mycnt2 = 0;     //2 카운트 변수
+uint8_t str2[20];   //문자 저장 배열
 int k = 0;
 void UART4_IRQHandler(void)
 {
@@ -446,10 +352,8 @@ void UART4_IRQHandler(void)
         //      UART4->SR &= ~USART_SR_RXNE;
         ch1 = UART4->DR;   // 수신된 문자 저장
 
-
         if ((CRdata_BT == 0) && (ch1 == 0x0D))
         {
-            LCD_DisplayText(6, 0, "                               ");
             no_BT = 0;
         }
         if (ch1 == 0x0A) CRdata_BT++;
@@ -457,23 +361,21 @@ void UART4_IRQHandler(void)
 
         if ((ch1 != 0x0D) && (ch1 != 0x0A))
         {
-            str2[k] = ch1;
-            k++;
-            for (int i = 0; i < k; i++)
+            str2[k] = ch1;                              //배열에 문자 저장
+            k++;                                        //배열 인덱스 up
+            for (int i = 0; i < k; i++)                 //1, 2 카운트 for문
             {
                 if (str2[i] == '1')
                 {
-                    mycnt++;
-
-                    if (mycnt == 1)
+                    mycnt++;                            //1개수 up
+                    if (mycnt == 1)                     //1개수 1개 일 시
                     {
-                        for (int j = 0; j < 20; j++)
+                        for (int j = 0; j < 20; j++)    //배열 초기화
                         {
                             str2[i] = NULL;
-
                         }
-                        DispayTitle();
-                        mycnt = 0;
+                        DispayTitle();                  //내부온도 화면 활성화
+                        mycnt = 0;                      //변수 초기화
                         mycnt2 = 0;
                         start = 1;
                         k = 0;
@@ -481,27 +383,23 @@ void UART4_IRQHandler(void)
                 }
                 else if (str2[i] == '2')
                 {
-                    mycnt2++;
+                    mycnt2++;                           //2개수 up
 
-                    if (mycnt2 == 1)
+                    if (mycnt2 == 1)                    //2개수 1개 일 시
                     {
-                        for (int j = 0; j < 20; j++)
+                        for (int j = 0; j < 20; j++)    //배열 초기화
                         {
                             str2[i] = NULL;
 
                         }
                     }
-                    Dis();
-                    mycnt = 0;
+                    Dis();                          //내부온도 화면 활성화
+                    mycnt = 0;                      //변수 초기화
                     mycnt2 = 0;
                     start = 2;
                     k = 0;
                 }
             }
-
-
-
-            LCD_DisplayText(6, 6, str2);
         }
 
         // BT에서 보낸 데이터를 rxQue[2]에 저장
@@ -740,7 +638,7 @@ void UART4_BRR_Configuration(uint32_t USART_BaudRate)
 
 void DispayTitle(void)
 {
-    LCD_Clear(RGB_WHITE);
+    LCD_Clear(RGB_WHITE);           //흰색으로 화면클리어
     LCD_SetFont(&Gulim7);
     LCD_SetBackColor(RGB_YELLOW);   //배경색
     LCD_SetTextColor(RGB_BLACK);   //글자색
@@ -748,25 +646,23 @@ void DispayTitle(void)
     LCD_DrawRectangle(0, 0, 159, 43); //사각형 그려주기
     LCD_SetBrushColor(RGB_YELLOW);
 
-    LCD_DrawFillRect(1, 1, 158, 42);
-    LCD_SetTextColor(RGB_BLUE);
+    LCD_DrawFillRect(1, 1, 158, 42);    //사각형 그려주기
+    LCD_SetTextColor(RGB_BLUE);         //글자색 : 파랑
     LCD_DisplayText(0, 2, "<Internal Temp.>");
-    LCD_SetTextColor(RGB_BLACK);
-    LCD_DisplayText(1, 2, "EXT TMEP:39.1C (3.30V)");
+    LCD_SetTextColor(RGB_BLACK);        //글자색 검정
+    LCD_DisplayText(1, 2, "EXT TEMP:39.1C (3.30V)");
     LCD_SetTextColor(RGB_RED);      //글자색 : 빨강
     LCD_DisplayText(1, 11, "39.1C (3.30V)");
-    LCD_SetTextColor(RGB_BLACK);
+    LCD_SetTextColor(RGB_BLACK);    //글자색 : 검정
     LCD_DisplayChar(1, 15, 'C');
     LCD_DisplayChar(1, 17, '(');
     LCD_DisplayChar(1, 23, ')');
     LCD_DisplayChar(1, 22, 'V');
     //막대 사각형 그려주기 색 : 초록
-    LCD_SetBrushColor(RGB_GREEN);
+    LCD_SetBrushColor(RGB_GREEN);   //브러쉬색 : 초록
     LCD_SetPenColor(RGB_GREEN);      //펜색 : 초록
     LCD_DrawRectangle(10, 28, 139, 10);
     LCD_DrawFillRect(11, 29, 138, 9);
-    LCD_DisplayChar(7, 6, mycnt + 0x30);
-    LCD_DisplayChar(9, 6, mycnt2 + 0x30);
 }
 void Dis(void)
 {
@@ -782,19 +678,46 @@ void Dis(void)
     LCD_SetTextColor(RGB_BLUE);
     LCD_DisplayText(0, 2, "<Internal Temp.>");
     LCD_SetTextColor(RGB_BLACK);
-    LCD_DisplayText(1, 2, "INT TMEP:39.1C");
+    LCD_DisplayText(1, 2, "INT TEMP:39.1C");
     LCD_SetTextColor(RGB_RED);      //글자색 : 빨강
     LCD_DisplayText(1, 11, "39.1C");
 
     //막대 사각형 그려주기 색 : 초록
-    LCD_SetBrushColor(RGB_RED);
-    LCD_SetPenColor(RGB_RED);      //펜색 : 초록
+    LCD_SetBrushColor(RGB_PINK);
+    LCD_SetPenColor(RGB_PINK);      //펜색 : 초록
     LCD_DrawRectangle(10, 28, 139, 10);
     LCD_DrawFillRect(11, 29, 138, 9);
-    LCD_DisplayChar(7, 6, mycnt + 0x30);
-    LCD_DisplayChar(9, 6, mycnt2 + 0x30);
 }
+int aa = 500;
+void Connect()              //블루투스 자동 연결 함수
+{
+    // AT
+    SerialSendString_BT("AT"); // BT module 연결 확인
+    SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
+    SerialSendString_PC("AT"); // BT module 연결 해제
+    DelayMS(aa);
+    // 이름 BTNAME
+    SerialSendString_BT("AT+BTNAME=TUE02"); // BT module 이름 설정(변경)
+    SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
+    SerialSendString_PC("AT+BTNAME=TUE02"); // BT module 연결 해제
+    DelayMS(aa);
+    // 리셋 ATZ
+    SerialSendString_BT("ATZ"); // BT 명령후에 명령 인식을 위한 소프트웨어 리셋
+    SerialSendChar_BT(0x0D);  // CR(Carriage Return : 0x0D)
+    SerialSendString_PC("ATZ"); // BT module 연결 해제
+    DelayMS(aa);
+    // 이름 확인
+    SerialSendString_BT("AT+BTINFO?0"); // BT module 이름 확인
+    SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
+    SerialSendString_PC("AT+BTINFO?0"); // BT module 연결 해제
+    DelayMS(aa);
+    // 검색가능 BTSCAN
+//    SerialSendString_BT("AT+BTSCAN"); // BT module 을 외부 BT 기기(Master)에서 찾게 하기 위한 명령
+//    SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
+////    SerialSendString_PC("AT+BTSCAN"); // BT module 연결 해제
+////    DelayMS(1000);
 
+}
 void DelayMS(unsigned short wMS)
 {
     register unsigned short i;
