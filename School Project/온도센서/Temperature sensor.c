@@ -5,6 +5,7 @@
 // 블루투스 연결 BT SCAN 전까지의 자동
 //BT NAME = TUE 02
 //SW2 누를 시 BTSCAN
+//sw3 누를 시 기본 수업 시간 블루투스 모드 0부터 sw 6까지 동일하게 동작
 //////////////////////////////////////////////////////////////////////
 #include "stm32f4xx.h"
 #include "GLCD.h"
@@ -56,20 +57,18 @@ uint16_t ADC_Value, Voltage;
 int val;                      //외부온도 변수
 int vol;                      //외부온도 변수            
 int on;                      //외부온도 변수
+int sel = 0;                //bluetooth 동작 모드 0자동 1기존
 int syscount = 0;
 double check;                      //외부온도 변수
 int Temp;                       //내부온도 변수
 int barTemp = 0;                //내부온도 변수
 uint8_t str[20];                //통신용 변수
-int start = 0;                  //내부, 외부 판단 변수
+int start = 1;                  //내부, 외부 판단 변수
 uint16_t ADC_Value2, Voltage2;  //외부온도 변수
 uint16_t Temp2;                 //외부온도 전압 변수
 void ADC_IRQHandler(void)
 {
     syscount++;
-    if (syscount > 1)
-    {
-    }
     if (ADC3->SR)
     {
         ADC3->SR &= ~(1 << 1);      // EOC flag clear
@@ -106,6 +105,7 @@ void ADC_IRQHandler(void)
                 LCD_SetPenColor(RGB_GREEN);      //펜색 : 초록
                 LCD_DrawRectangle(10, 28, 139, 9);
             }
+
         }
     }
     if (ADC1->SR)
@@ -149,6 +149,7 @@ int main(void)
     LCD_DisplayText(7, 0, "BT NAME TUE 02");
     LCD_DisplayText(8, 0, "SW1 : BT TURN OFF");
     LCD_DisplayText(9, 0, "SW2 : BT SCAN");
+    LCD_DisplayText(9, 0, "USE Default BT");            //스위치 3 누를 시 수업 시간 블루투스 예제로 동작 가능
     LCD_SetBackColor(RGB_YELLOW);
     strBufferIdx[0] = 0;
     strBufferIdx[1] = 0;
@@ -163,20 +164,77 @@ int main(void)
             ADC1->CR2 |= (1 << 30);
             DelayMS(300);           //내부 온도 센서 값 받아오는 속도 너무 빨라 딜레이 적용
         }
-        switch (KEY_Scan())
+        if (sel == 0)
         {
-        case SW1_PUSH:       //SW0
-            GPIOG->ODR ^= 0x01;   // LED0 On
-            SerialSendString_BT("AT+BTCANCEL"); // BT module 연결 해제
-            SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
-            SerialSendString_PC("AT+BTCANCEL"); // BT module 연결 해제
-            ADC1->CR2 |= (1 << 30);
-            break;
-        case SW2_PUSH:       //SW0
-            GPIOG->ODR ^= 0x02;// LED1 On
-            SerialSendString_BT("AT+BTSCAN");
-            SerialSendChar_BT(0x0D); // USART1을 통해 PC로 “HELLO! ” 문자열을 전송
-            break;
+            switch (KEY_Scan())
+            {
+            case SW1_PUSH:       //SW0
+                GPIOG->ODR ^= 0x01;   // LED0 On
+                SerialSendString_BT("AT+BTCANCEL"); // BT module 연결 해제
+                SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
+                SerialSendString_PC("AT+BTCANCEL"); // BT module 연결 해제
+                ADC1->CR2 |= (1 << 30);
+                break;
+            case SW2_PUSH:       //SW0
+                GPIOG->ODR ^= 0x02;// LED1 On
+                SerialSendString_BT("AT+BTSCAN");
+                SerialSendChar_BT(0x0D); // USART1을 통해 PC로 “HELLO! ” 문자열을 전송
+                break;
+            case SW3_PUSH:      //블루 투스 자동 모드
+                sel = 1;
+                break;
+            }
+        }
+        else if (sel == 1)
+        {
+            switch (KEY_Scan())
+            {
+            case SW0_PUSH: 		//SW0
+                GPIOG->ODR |= 0x01;	// LED0 On
+                SerialSendString_BT("AT+BTCANCEL"); // BT module 연결 해제
+                SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
+                SerialSendString_PC("AT+BTCANCEL"); // BT module 연결 해제
+                break;
+            case SW1_PUSH: 		//SW1
+                GPIOG->ODR |= 0x02;	// LED1 On
+                SerialSendString_BT("AT"); // BT module 연결 확인
+                SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
+                SerialSendString_PC("AT"); // BT module 연결 해제
+                break;
+            case SW2_PUSH: 		//SW2
+                GPIOG->ODR |= 0x04;	// LED2 On
+                SerialSendString_BT("AT+BTSCAN"); // BT module 을 외부 BT 기기(Master)에서 찾게 하기 위한 명령
+                SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
+                SerialSendString_PC("AT+BTSCAN"); // BT module 연결 해제
+                break;
+            case SW3_PUSH: 		//SW3
+                GPIOG->ODR |= 0x08;	// LED3 On
+                SerialSendString_BT("AT+BTNAME=TUE02"); // BT module 이름 설정(변경)
+                SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
+                SerialSendString_PC("AT+BTNAME=TUE02"); // BT module 연결 해제
+                break;
+            case SW4_PUSH: 		//SW4
+                GPIOG->ODR |= 0x10;	// LED4 On
+                SerialSendString_BT("ATZ"); // BT 명령후에 명령 인식을 위한 소프트웨어 리셋
+                SerialSendChar_BT(0x0D);  // CR(Carriage Return : 0x0D)
+                SerialSendString_PC("ATZ"); // BT module 연결 해제
+                break;
+            case SW5_PUSH: 		//SW5
+                GPIOG->ODR |= 0x20;	// LED5 On
+                SerialSendString_BT("AT+BTINFO?0"); // BT module 이름 확인
+                SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
+                SerialSendString_PC("AT+BTINFO?0"); // BT module 연결 해제
+                break;
+            case SW6_PUSH: 		//SW6
+                GPIOG->ODR |= 0x40;	// LED6 On
+                SerialSendChar_BT('B'); // 일반 데이터 전송 
+                SerialSendChar_PC('B'); // PC 통신 확인을 위한 문자 전송
+                break;
+            case SW7_PUSH: 		//SW7
+                GPIOG->ODR |= 0x80;	// LED7 On
+                SerialSendChar_PC('P'); // PC 통신 확인을 위한 문자 전송
+                break;
+            }
         }
     }
 }
