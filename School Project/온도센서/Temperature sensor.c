@@ -4,6 +4,7 @@
 //TUE 02
 // 블루투스 연결 BT SCAN 전까지의 자동
 //BT NAME = TUE 02
+//SW1 누를 시 자동 설정(AT부터 끝까지 BTSCAN전까지)
 //SW2 누를 시 BTSCAN
 //sw3 누를 시 기본 수업 시간 블루투스 모드 0부터 sw 6까지 동일하게 동작
 //////////////////////////////////////////////////////////////////////
@@ -58,7 +59,6 @@ int val;                      //외부온도 변수
 int vol;                      //외부온도 변수            
 int on;                      //외부온도 변수
 int sel = 0;                //bluetooth 동작 모드 0자동 1기존
-int syscount = 0;
 double check;                      //외부온도 변수
 int Temp;                       //내부온도 변수
 int barTemp = 0;                //내부온도 변수
@@ -68,13 +68,11 @@ uint16_t ADC_Value2, Voltage2;  //외부온도 변수
 uint16_t Temp2;                 //외부온도 전압 변수
 void ADC_IRQHandler(void)
 {
-    syscount++;
     if (ADC3->SR)
     {
         ADC3->SR &= ~(1 << 1);      // EOC flag clear
         if (start == 1)             // BT 내부 온도 센서
         {
-            ADC3->SR &= ~(1 << 1);      // EOC flag clear
             ADC_Value = ADC3->DR;      // Reading ADC result
             Voltage = ADC_Value * (3.3 * 100) / 4095;   // 3.3 : 4095 =  Volatge : ADC_Value 
             // 1 : 4095
@@ -143,18 +141,19 @@ int main(void)
     Que_Clear(&rxQue[2]);
     GPIOG->ODR &= 0x00;   // LED0~7 Off 
     DispayTitle();   //LCD 초기화면구동 함수
-    Connect();       //블루투스 연결 함수
+    //Connect();       //블루투스 연결 함수
     LCD_SetBackColor(RGB_WHITE);
     LCD_DisplayText(6, 0, "BT MODE AUTO");              //블루투스 설명
     LCD_DisplayText(7, 0, "BT NAME TUE 02");
-    LCD_DisplayText(8, 0, "SW1 : BT TURN OFF");
+    LCD_DisplayText(8, 0, "SW1 : Auto Set");
     LCD_DisplayText(9, 0, "SW2 : BT SCAN");
-    LCD_DisplayText(9, 0, "USE Default BT");            //스위치 3 누를 시 수업 시간 블루투스 예제로 동작 가능
+    LCD_DisplayText(10, 0, "SW3 : USE Default BT");            //스위치 3 누를 시 수업 시간 블루투스 예제로 동작 가능
     LCD_SetBackColor(RGB_YELLOW);
     strBufferIdx[0] = 0;
     strBufferIdx[1] = 0;
 
-
+    start = 1;  //외부 온도 모드
+    sel = 1;    //자동 bt 모드
     int btcnt = 0;
     while (1)
     {
@@ -169,18 +168,23 @@ int main(void)
             switch (KEY_Scan())
             {
             case SW1_PUSH:       //SW0
-                GPIOG->ODR ^= 0x01;   // LED0 On
+                GPIOG->ODR ^= 0x02;   // LED0 On
                 SerialSendString_BT("AT+BTCANCEL"); // BT module 연결 해제
                 SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
                 SerialSendString_PC("AT+BTCANCEL"); // BT module 연결 해제
                 ADC1->CR2 |= (1 << 30);
                 break;
             case SW2_PUSH:       //SW0
-                GPIOG->ODR ^= 0x02;// LED1 On
+                GPIOG->ODR ^= 0x04;// LED1 On
                 SerialSendString_BT("AT+BTSCAN");
                 SerialSendChar_BT(0x0D); // USART1을 통해 PC로 “HELLO! ” 문자열을 전송
                 break;
             case SW3_PUSH:      //블루 투스 자동 모드
+                GPIOG->ODR ^= 0x08;// LED1 On
+                Connect();
+                break;
+            case SW4_PUSH:      //블루 투스 자동 모드
+                GPIOG->ODR ^= 0x10;// LED1 On
                 sel = 1;
                 break;
             }
@@ -345,7 +349,7 @@ void TIMER8_Init(void)
     TIM8->CCER |= (1 << 0);   // CC3E=1: CC3 channel Output Enable
            // OC1(TIM8_CH1) Active: 해당핀을 통해 신호출력
     TIM8->CCER &= ~(1 << 1);   // CC3P=0: CC1channel Output Polarity (OCPolarity_High : OC1으로 반전없이 출력)  
-    TIM8->BDTR |= (1 << 15);
+
 
     // 'Mode' Selection : Output mode, toggle  
     TIM8->CCMR1 &= ~(3 << 0); // CC3S(CC1 channel) = '0b00' : Output 
@@ -354,7 +358,7 @@ void TIMER8_Init(void)
            // OC1REF toggles when CNT = CCR3
 
     TIM8->CCR1 = 10000;   // TIM8 CCR3 TIM8_Pulse
-
+    TIM8->BDTR |= (1 << 15);
     ////////////////////////////////
     // Disable Tim8 CC1 interrupt
 
@@ -769,6 +773,9 @@ void Connect()              //블루투스 자동 연결 함수
     SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
     SerialSendString_PC("AT+BTINFO?0"); // BT module 연결 해제
     DelayMS(aa);
+    SerialSendString_BT("AT+BTSCAN");
+    SerialSendChar_BT(0x0D); // USART1을 통해 PC로 “HELLO! ” 문자열을 전송
+    SerialSendString_PC("AT+BTSCAN"); // BT module 연결 해제
     // 검색가능 BTSCAN
 //    SerialSendString_BT("AT+BTSCAN"); // BT module 을 외부 BT 기기(Master)에서 찾게 하기 위한 명령
 //    SerialSendChar_BT(0x0D); // CR(Carriage Return : 0x0D)
