@@ -6,7 +6,7 @@
 include "stm32f4xx.h"
 include "FRAM.h"
 include "GLCD.h"
-
+include "Que.h"
 #define SW0_PUSH        0xFE00  //PH8
 #define SW1_PUSH        0xFD00  //PH9
 #define SW2_PUSH        0xFB00  //PH10
@@ -24,6 +24,10 @@ void DisplayInitScreen(void);
 void DelayMS(unsigned short wMS);
 void DelayUS(unsigned short wUS);
 void BEEP(void);
+void USART1_Init(void);
+void USART1_BRR_Configuration(uint32_t USART_BaudRate);
+void SerialSendChar_PC(uint8_t c);
+void SerialSendString_PC(char *s);
 
 int curh = 0;	//현재 시간
 int curm = 0;	//현재 분
@@ -93,12 +97,7 @@ int main(void)
 				//BEEP();
 				//BEEP();
 
-			case SW7_PUSH  : 	//SW6
-                mode +=1;
-				if (mode ==4)
-					mode =1;
-				DisplayInitScreen();
-				//BEEP();
+		
 			break;	
         }
 	}
@@ -212,27 +211,99 @@ void _EXTI_Init(void)
 	
 	GPIOH->MODER 	&= 0x0000FFFF;	// GPIOH PIN8~PIN15 Input mode (reset state)				 
 	
-	SYSCFG->EXTICR[2] |= 0x0077; 	// EXTI8,9에 대한 소스 입력은 GPIOH로 설정 (EXTICR3) (reset value: 0x0000)	
+	SYSCFG->EXTICR[3] |= 0x7000; 	// EXTI15에 대한 소스 입력은 GPIOH로 설정 (EXTI15) (reset value: 0x0000)	
 	
-	EXTI->FTSR |= 0x000100;		// Falling Trigger Enable  (EXTI8:PH8)
-    EXTI->RTSR |= 0x000200;		// Rising Trigger  Enable  (EXTI9:PH9) 
-    EXTI->IMR  |= 0x000300;  	// EXTI8,9 인터럽트 mask (Interrupt Enable)
+	EXTI->FTSR |= 0x000100;		// Falling Trigger Enable  (EXTI15)
+    EXTI->RTSR |= 0x000200;		// Rising Trigger  Enable  (EXTI9) 
+    EXTI->IMR  |= 0x000300;  	// EXTI15 인터럽트 mask (Interrupt Enable)
 		
-	NVIC->ISER[0] |= (1<<23);   	// Enable Interrupt EXTI8,9 Vector table Position 참조
+	NVIC->ISER[1] |= (1<<8);   	// Enable Interrupt EXTI15 Vector table Position 참조
 }
 
-void EXTI9_5_IRQHandler(void)		// EXTI 5~9 인터럽트 핸들러
+void EXTI15_10_IRQHandler(void)      // EXTI 15~10 인터럽트 핸들러
 {
-	if(EXTI->PR & 0x0100) 		// EXTI8 nterrupt Pending?
-	{
-		EXTI->PR |= 0x0100; 	// Pending bit Clear
-	}
-	else if(EXTI->PR & 0x0200) 	// EXTI9 Interrupt Pending?
-	{
-        EXTI->PR |= 0x0200; 	// Pending bit Clear
-	}
+    if (EXTI->PR & 0x8000)       // EXTI11 Interrupt Pending?
+    {
+		EXTI->PR |= 0x8000;    // Pending bit Clear
+        GPIOG->ODR &= 0x0F;
+        GPIOG->ODR |= 0x80;   // LED0 On
+        mode +=1;
+		if (mode ==4)
+				mode =1;
+		DisplayInitScreen();
+		//BEEP();
+    }
 }
+void USART1_Init(void)
+{
+	// USART1 : TX(PA9)
+	RCC->AHB1ENR	|= (1<<0);	// RCC_AHB1ENR GPIOA Enable
+	GPIOA->MODER	|= (2<<2*9);	// GPIOA PIN9 Output Alternate function mode					
+	GPIOA->OSPEEDR	|= (3<<2*9);	// GPIOA PIN9 Output speed (100MHz Very High speed)
+	GPIOA->PUPDR 	|= (1<<2*9);	// GPIOA  PIN9 : Pull-up   
+	GPIOA->AFR[1]	|= (7<<4);	// Connect GPIOA pin9 to AF7(USART1)
+    
+	// USART1 : RX(PA10)
+	GPIOA->MODER 	|= (2<<2*10);	// GPIOA PIN10 Output Alternate function mode
+	GPIOA->OSPEEDR	|= (3<<2*10);	// GPIOA PIN10 Output speed (100MHz Very High speed
+	GPIOA->PUPDR 	|= (1<<2*10);	// GPIOA  PIN10 : Pull-up   
+	GPIOA->AFR[1]	|= (7<<8);	// Connect GPIOA pin10 to AF7(USART1)
 
+	RCC->APB2ENR	|= (1<<4);	// RCC_APB2ENR USART1 Enable
+    
+	USART1_BRR_Configuration(9600); // USART1 Baud rate Configuration
+    
+	USART1->CR1	&= ~(1<<12);	// USART_WordLength 8 Data bit
+	USART1->CR1	&= ~(1<<10);	// NO USART_Parity
+
+	USART1->CR1	|= (1<<2);	// 0x0004, USART_Mode_RX Enable
+	USART1->CR1	|= (1<<3);	// 0x0008, USART_Mode_Tx Enable
+	USART1->CR2	&= ~(3<<12);	// 0b00, USART_StopBits_1
+	USART1->CR3	= 0x0000;	// No HardwareFlowControl, No DMA
+    
+	USART1->CR1 	|= (1<<5);	// 0x0020, RXNE interrupt Enable
+	USART1->CR1 	&= ~(1<<7);	// 0x0080, TXE interrupt Disable
+
+	NVIC->ISER[1]	|= (1<<(37-32));// Enable Interrupt USART1 (NVIC 37번)
+	USART1->CR1 	|= (1<<13);	//  0x2000, USART1 Enable
+}
+// USART1 Baud rate 설정
+void USART1_BRR_Configuration(uint32_t USART_BaudRate)
+{ 
+	uint32_t tmpreg = 0x00;
+	uint32_t APB2clock = 84000000;	//PCLK2_Frequency
+	uint32_t integerdivider = 0x00;
+	uint32_t fractionaldivider = 0x00;
+
+	// Find the integer part 
+	if ((USART1->CR1 & USART_CR1_OVER8) != 0) // USART_CR1_OVER8=(1<<15)
+        //  #define  USART_CR1_OVER8 ((uint16_t)0x8000) // USART Oversampling by 8 enable   
+	{       // USART1->CR1.OVER8 = 1 (8 oversampling)
+		// Computing 'Integer part' when the oversampling mode is 8 Samples 
+		integerdivider = ((25 * APB2clock) / (2 * USART_BaudRate));  // 공식에 100을 곱한 곳임(소수점 두번째자리까지 유지하기 위함)  
+	}
+	else  // USART1->CR1.OVER8 = 0 (16 oversampling)
+	{	// Computing 'Integer part' when the oversampling mode is 16 Samples 
+		integerdivider = ((25 * APB2clock) / (4 * USART_BaudRate));  // 공식에 100을 곱한 곳임(소수점 두번째자리까지 유지하기 위함)    
+	}
+	tmpreg = (integerdivider / 100) << 4;
+  
+	// Find the fractional part 
+	fractionaldivider = integerdivider - (100 * (tmpreg >> 4));
+
+	// Implement the fractional part in the register 
+	if ((USART1->CR1 & USART_CR1_OVER8) != 0)	
+	{	// 8 oversampling
+		tmpreg |= (((fractionaldivider * 8) + 50) / 100) & (0x07);
+	}
+	else	// 16 oversampling
+	{
+		tmpreg |= (((fractionaldivider * 16) + 50) / 100) & (0x0F);
+	}
+
+	// Write to USART BRR register
+	USART1->BRR = (uint16_t)tmpreg;
+}
 void BEEP(void)			// Beep for 20 ms 
 { 	GPIOF->ODR |= 0x0200;	// PF9 'H' Buzzer on
 	DelayMS(20);		// Delay 20 ms
@@ -245,7 +316,21 @@ void DelayMS(unsigned short wMS)
 	for (i=0; i<wMS; i++)
 		DelayUS(1000);   // 1000us => 1ms
 }
-
+void SerialSendChar_PC(uint8_t Ch) // 1문자 보내기 함수
+{
+	// USART_SR_TXE(1<<7)=0?, TX Buffer NOT Empty? 
+	// TX buffer Empty되지 않으면 계속 대기(송신 가능한 상태까지 대기)
+    while((USART1->SR & USART_SR_TXE) == RESET); 
+	USART1->DR = (Ch & 0x01FF);	// 전송 (최대 9bit 이므로 0x01FF과 masking)
+}
+void SerialSendString_PC(char *str) // 여러문자 보내기 함수
+{
+	while (*str != '\0') // 종결문자가 나오기 전까지 구동, 종결문자가 나온후에도 구동시 메모리 오류 발생가능성 있음.
+	{
+		SerialSendChar_PC(*str);// 포인터가 가르키는 곳의 데이터를 송신
+		str++; 			// 포인터 수치 증가
+	}
+}
 void DelayUS(unsigned short wUS)
 {
 	volatile int Dly = (int)wUS*17;
