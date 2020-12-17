@@ -28,6 +28,8 @@ void USART1_Init(void);
 void USART1_BRR_Configuration(uint32_t USART_BaudRate);
 void SerialSendChar_PC(uint8_t c);
 void SerialSendString_PC(char *s);
+void TIMER3_Init(void);
+int get16bit(int some);
 
 int curh = 0;	//현재 시간
 int curm = 0;	//현재 분
@@ -37,9 +39,13 @@ int temp = 0;	//온도
 int h = 0;		//히터
 int c = 1;		//쿨러
 int calres = 0; //계산정답
+int calres10=0;
+int calres1=0;
 int mode = 1; 	//초기 알람모드
-int alh = 46;
-int alm = 41;
+int alh = 70;
+int alm = 65;
+int getnum = 0;
+uint16_t ADC_Value, Voltage;  //외부온도 변수
 
 int main(void)
 {
@@ -68,9 +74,13 @@ int main(void)
                 GPIOG->ODR |= 0x10;	// LED4 ON
 				//BEEP();
 				alh += 1;
-				if (alh == 46)	//F 넘어갈 시
+				if (alh == 71)	//F 넘어갈 시
 				{
 					alh = 30;	//0으로 초기화
+				}
+				else if (alh == 58)
+				{
+					alh = 65;
 				}
 				DisplayInitScreen();
 
@@ -81,9 +91,13 @@ int main(void)
                 GPIOG->ODR |= 0x20;	// LED5 ON
 				//BEEP();
 				alm += 1;
-				if (alm == 46)	//F 넘어갈 시
+				if (alm == 71)	//F 넘어갈 시
 				{
 					alm = 30;	//0으로 초기화
+				}
+				else if (alm == 58)
+				{
+					alm = 65;
 				}
 				DisplayInitScreen();
 
@@ -102,7 +116,253 @@ int main(void)
         }
 	}
 }
+void USART1_IRQHandler(void)	
+{       
+    UINT8 ch1;
 
+    if ( USART1->SR & USART_SR_RXNE ) // USART_SR_RXNE= 1? RX Buffer Full?
+    	// #define  USART_SR_RXNE ((uint16_t)0x0020)    //  Read Data Register Not Empty     
+	{
+        ch1 = (uint16_t)(USART1->DR & (uint16_t)0x01FF);	// 수신된 문자 저장
+        if (CRdata_PC == 1) 
+        {
+            LCD_DisplayText(3,0, "                              ");
+            no_PC = 0;
+            CRdata_PC = 0;
+        }
+        if (ch1 == 0x0D) CRdata_PC++;
+
+        if (ch1 != 0x0D)
+		{
+			getnum++;
+			if (getnum == 1)
+				fnum = ch1;
+			else if (getnum ==2)
+				snum == ch1;
+			else if (getnum == 3)
+			{
+				if (ch1 == '=')
+				{
+					fnum = get16bit(fnum);
+					snum = get16bit(snum);
+					calres = fnum + snum;
+					if (calres >= 16)
+					{
+						calres10 = 1;
+						calres1 = calres % 16;
+						if (calres1 >= 10)
+						{
+							calres1 -= 10
+							LCD_DisplayChar(1, 11, (calres1)+0x41);
+						}
+						else
+						{
+							LCD_DisplayChar(1, 11, (calres1)+0x30);
+						}
+						LCD_DisplayChar(1, 10, (calres10)+0x30);
+						
+					}
+					else
+					{
+						if (calres1 >= 10)
+						{
+							calres1 -= 10
+							LCD_DisplayChar(1, 11, (calres1)+0x41);
+						}
+						else
+						{
+							LCD_DisplayChar(1, 11, (calres1)+0x30);
+						}
+						LCD_DisplayChar(1, 10, (calres10)+0x30);
+						
+					}
+				}
+				getnum = 0;
+			}
+			//BEEP();
+		}
+            
+        // PC에서 보낸 데이터를 rxQue[1]에 저장
+        Que_PutByte(&rxQue[1] , ch1);
+
+ 	} 
+        // DR 을 읽으면 SR.RXNE bit(flag bit)는 clear 된다. 즉 강제 clear 할 필요없음 
+
+    if ( USART1->SR & USART_SR_TXE ) // USART_SR_TXE= 1? TX Buffer EMPTY?
+    	// #define  USART_SR_TXE ((uint16_t)0x0080)    //  WRITE Data Register Empty     
+    {   
+        if(Que_GetSize(&txQue[1]) != 0) 
+        {
+            // MCU --> PC 전송
+            Que_GetByte(&txQue[1],&ch1);
+            USART1->DR = ch1;
+        } 
+        else 
+            USART1->CR1 &= ~(1<<7);  // TXE interrupt Disable
+    }   	
+}
+
+void ADC_IRQHandler(void)
+{
+    ADC2->SR &= ~(1 << 1);      // EOC flag clear
+
+    ADC_Value = ADC2->DR;      // Reading ADC result
+   	Voltage = ADC_Value * (3.3 * 10) / 4095;   // 3.3 : 4095 =  Volatge : ADC_Value 
+    // 1 : 4095
+    if (Voltage <= 8)                       // 33으로 보고 판단해서 0~8 = rpm1
+    {
+        rpm = 1;
+    }
+    else if (Voltage >= 9 && Voltage <= 16)      // 33으로 보고 판단해서 9~16 = rpm2
+    {
+        rpm = 2;
+    }
+    else if (Voltage >= 17 && Voltage <= 24)       // 33으로 보고 판단해서 17~24 = rpm3
+    {
+        rpm = 3;
+    }
+    else if (Voltage >= 25 && Voltage <= 33)         // 33으로 보고 판단해서 24~33 = rpm4
+    {
+        rpm = 4;
+    }
+}
+void TIM4_IRQHandler(void)      //RESET: 0
+{
+	if ((TIM4->SR & 0x01) != RESET)	// Update interrupt flag (10ms)
+	{
+		TIM4->SR &= ~(1<<0);	// Update Interrupt Claer
+		GPIOG->ODR |= 0x01;	// LED0 On
+	}
+    
+	if((TIM4->SR & 0x02) != RESET)	// Capture/Compare 1 interrupt flag
+	{
+		TIM4->SR &= ~(1<<1);	// CC 1 Interrupt Claer
+		GPIOG->ODR &= ~0x01;	// LED0 Off
+	}
+}
+void EXTI15_10_IRQHandler(void)      // EXTI 15~10 인터럽트 핸들러
+{
+    if (EXTI->PR & 0x8000)       // EXTI11 Interrupt Pending?
+    {
+		EXTI->PR |= 0x8000;    // Pending bit Clear
+        GPIOG->ODR &= 0x0F;
+        GPIOG->ODR |= 0x80;   // LED0 On
+        mode +=1;
+		if (mode ==4)
+				mode =1;
+		DisplayInitScreen();
+		//BEEP();
+    }
+}
+void _ADC_Init(void)
+{   // ADC2: PA1(pin 41)
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;   // (1<<0) ENABLE GPIOA CLK (stm32f4xx.h 참조)
+    GPIOA->MODER |= (3 << 2 * 1);      // CONFIG GPIOA PIN0(PA0) TO ANALOG IN MODE
+
+    RCC->APB2ENR |= RCC_APB2ENR_ADC2EN;   // (1<<9) ENABLE ADC2 CLK (stm32f4xx.h 참조)
+
+    ADC->CCR &= ~(0X1F << 0);      // MULTI[4:0]: ADC_Mode_Independent
+    ADC->CCR |= (1 << 16);       // 0x00010000 ADCPRE:ADC_Prescaler_Div4 (ADC MAX Clock 36MHz, 84Mhz(APB2)/4 = 21MHz)
+
+    ADC2->CR1 &= ~(3 << 24);      // RES[1:0]=0b00 : 12bit Resolution
+    ADC2->CR1 &= ~(1 << 8);      // SCAN=0 : ADC_ScanCovMode Disable
+    ADC2->CR1 |= (1 << 5);      // EOCIE=1: Interrupt enable for EOC
+
+    ADC2->CR2 &= ~(1 << 1);      // CONT=0: ADC_Continuous ConvMode Disable
+    ADC2->CR2 |= (3 << 28);      // EXTEN[1:0]=0b00: ADC_ExternalTrigConvEdge_Falling
+    //ADC2->CR2 |= (0x0F << 24);   // EXTI 11 Line Event
+    ADC2->CR2 &= ~(1 << 11);      // ALIGN=0: ADC_DataAlign_Right
+    ADC2->CR2 &= ~(1 << 10);      // EOCS=0: The EOC bit is set at the end of each sequence of regular conversions
+
+    ADC2->SQR1 &= ~(0xF << 20);   // L[3:0]=0b0000: ADC Regular channel sequece length 
+    // 0b0000:1 conversion)
+    ADC2->SMPR2 |= (0x7 << (3 * 1));   // ADC2_CH1 Sample Time_480Cycles (3*Channel_1)
+    //Channel selection, The Conversion Sequence of PIN1(ADC2_CH0) is first, Config sequence Range is possible from 0 to 17
+    ADC2->SQR3 |= (1 << 0);   // SQ1[4:0]=0b0000 : CH1
+    NVIC->ISER[0] |= (1 << 18);   // Enable ADC global Interrupt
+
+}
+void _GPIO_Init(void)
+{
+	// LED (GPIO G) 설정
+    RCC->AHB1ENR	|=  0x00000040;	// RCC_AHB1ENR : GPIOG(bit#6) Enable							
+	GPIOG->MODER 	|=  0x00005555;	// GPIOG 0~7 : Output mode (0b01)						
+	GPIOG->OTYPER	&= ~0x00FF;	// GPIOG 0~7 : Push-pull  (GP8~15:reset state)	
+ 	GPIOG->OSPEEDR 	|=  0x00005555;	// GPIOG 0~7 : Output speed 25MHZ Medium speed 
+    
+	// SW (GPIO H) 설정 
+	RCC->AHB1ENR    |=  0x00000080;	// RCC_AHB1ENR : GPIOH(bit#7) Enable							
+	GPIOH->MODER 	&= ~0xFFFF0000;	// GPIOH 8~15 : Input mode (reset state)				
+	GPIOH->PUPDR 	&= ~0xFFFF0000;	// GPIOH 8~15 : Floating input (No Pull-up, pull-down) :reset state
+
+	// Buzzer (GPIO F) 설정 
+    RCC->AHB1ENR	|=  0x00000020; // RCC_AHB1ENR : GPIOF(bit#5) Enable							
+	GPIOF->MODER 	|=  0x00040000;	// GPIOF 9 : Output mode (0b01)						
+	GPIOF->OTYPER 	&= ~0x0200;	// GPIOF 9 : Push-pull  	
+ 	GPIOF->OSPEEDR 	|=  0x00040000;	// GPIOF 9 : Output speed 25MHZ Medium speed 
+}	
+
+void _EXTI_Init(void)
+{
+    RCC->AHB1ENR 	|= 0x0080;	// RCC_AHB1ENR GPIOH Enable
+	RCC->APB2ENR 	|= 0x4000;	// Enable System Configuration Controller Clock
+	
+	GPIOH->MODER 	&= 0x0000FFFF;	// GPIOH PIN8~PIN15 Input mode (reset state)				 
+	
+	SYSCFG->EXTICR[3] |= 0x7000; 	// EXTI15에 대한 소스 입력은 GPIOH로 설정 (EXTI15) (reset value: 0x0000)	
+	
+	EXTI->FTSR |= 0x000100;		// Falling Trigger Enable  (EXTI15)
+    EXTI->RTSR |= 0x000200;		// Rising Trigger  Enable  (EXTI9) 
+    EXTI->IMR  |= 0x000300;  	// EXTI15 인터럽트 mask (Interrupt Enable)
+		
+	NVIC->ISER[1] |= (1<<8);   	// Enable Interrupt EXTI15 Vector table Position 참조
+}
+void TIMER3_Init(void)
+{
+	RCC->APB1ENR |= 0x02;	// RCC_APB1ENR TIMER3 Enable
+
+	// Setting CR1 : 0x0000 
+	TIM3->CR1 &= ~(1<<4);  // DIR=0(Up counter)(reset state)
+	TIM3->CR1 &= ~(1<<1);	// UDIS=0(Update event Enabled): By one of following events
+                            //  Counter Overflow/Underflow, 
+                            //  Setting the UG bit Set,
+                            //  Update Generation through the slave mode controller 
+                            // UDIS=1 : Only Update event Enabled by  Counter Overflow/Underflow,
+	TIM3->CR1 &= ~(1<<2);	// URS=0(Update Request Source  Selection):  By one of following events
+                            //	Counter Overflow/Underflow, 
+                            // Setting the UG bit Set,
+                            //	Update Generation through the slave mode controller 
+                            // URS=1 : Only Update Interrupt generated  By  Counter Overflow/Underflow,
+	TIM3->CR1 &= ~(1<<3);	// OPM=0(The counter is NOT stopped at update event) (reset state)
+	TIM3->CR1 &= ~(1<<7);	// ARPE=0(ARR is NOT buffered) (reset state)
+	TIM3->CR1 &= ~(3<<8); 	// CKD(Clock division)=00(reset state)
+	TIM3->CR1 &= ~(3<<5); 	// CMS(Center-aligned mode Sel)=00 (Edge-aligned mode) (reset state)
+                            // Center-aligned mode: The counter counts UP and DOWN alternatively
+
+
+    // Deciding the Period
+	TIM3->PSC = 8400-1;	// Prescaler 84,000,000Hz/8400 = 10,000 Hz (0.1ms)  (1~65536)
+	TIM3->ARR = 10-1;	// Auto reload  0.1ms * 10 = 1ms
+
+   	// Clear the Counter
+	TIM3->EGR |= (1<<0);	// UG(Update generation)=1 
+                        // Re-initialize the counter(CNT=0) & generates an update of registers   
+	TIM3 ->EGR |= (1<<1); 	// CC1G(C/C 1 gerneration)						
+	TIM3->DIER |= (1<<1)	// TIMER 3 CC1 INTERUPT EN
+	// Setting an UI(UEV) Interrupt 
+	NVIC->ISER[0] |= (1<<29); // Enable Timer3 global Interrupt
+ 	TIM3->DIER |= (1<<0);	// Enable the Tim3 Update interrupt
+
+	TIM3->CR1 |= (1<<0);	// Enable the Tim3 Counter (clock enable)   
+}
+
+void TIM3_IRQHandler(void)  	// 1ms Interrupt
+{
+    
+	TIM3->SR &= ~(1<<0);	// Interrupt flag Clear
+    
+	ADC2->CR2 |= (1 << 0);      // ADC2ON: ADC ON
+}
 void TIMER4_OC_Init(void)
 {
 // PD12: TIM4_CH1
@@ -169,71 +429,6 @@ void TIMER4_OC_Init(void)
 	TIM4->CR1 |= (1<<0);	// CEN: Enable the Tim4 Counter  					
 }
 
-void TIM4_IRQHandler(void)      //RESET: 0
-{
-	if ((TIM4->SR & 0x01) != RESET)	// Update interrupt flag (10ms)
-	{
-		TIM4->SR &= ~(1<<0);	// Update Interrupt Claer
-		GPIOG->ODR |= 0x01;	// LED0 On
-	}
-    
-	if((TIM4->SR & 0x02) != RESET)	// Capture/Compare 1 interrupt flag
-	{
-		TIM4->SR &= ~(1<<1);	// CC 1 Interrupt Claer
-		GPIOG->ODR &= ~0x01;	// LED0 Off
-	}
-}
-
-void _GPIO_Init(void)
-{
-	// LED (GPIO G) 설정
-    RCC->AHB1ENR	|=  0x00000040;	// RCC_AHB1ENR : GPIOG(bit#6) Enable							
-	GPIOG->MODER 	|=  0x00005555;	// GPIOG 0~7 : Output mode (0b01)						
-	GPIOG->OTYPER	&= ~0x00FF;	// GPIOG 0~7 : Push-pull  (GP8~15:reset state)	
- 	GPIOG->OSPEEDR 	|=  0x00005555;	// GPIOG 0~7 : Output speed 25MHZ Medium speed 
-    
-	// SW (GPIO H) 설정 
-	RCC->AHB1ENR    |=  0x00000080;	// RCC_AHB1ENR : GPIOH(bit#7) Enable							
-	GPIOH->MODER 	&= ~0xFFFF0000;	// GPIOH 8~15 : Input mode (reset state)				
-	GPIOH->PUPDR 	&= ~0xFFFF0000;	// GPIOH 8~15 : Floating input (No Pull-up, pull-down) :reset state
-
-	// Buzzer (GPIO F) 설정 
-    RCC->AHB1ENR	|=  0x00000020; // RCC_AHB1ENR : GPIOF(bit#5) Enable							
-	GPIOF->MODER 	|=  0x00040000;	// GPIOF 9 : Output mode (0b01)						
-	GPIOF->OTYPER 	&= ~0x0200;	// GPIOF 9 : Push-pull  	
- 	GPIOF->OSPEEDR 	|=  0x00040000;	// GPIOF 9 : Output speed 25MHZ Medium speed 
-}	
-
-void _EXTI_Init(void)
-{
-    RCC->AHB1ENR 	|= 0x0080;	// RCC_AHB1ENR GPIOH Enable
-	RCC->APB2ENR 	|= 0x4000;	// Enable System Configuration Controller Clock
-	
-	GPIOH->MODER 	&= 0x0000FFFF;	// GPIOH PIN8~PIN15 Input mode (reset state)				 
-	
-	SYSCFG->EXTICR[3] |= 0x7000; 	// EXTI15에 대한 소스 입력은 GPIOH로 설정 (EXTI15) (reset value: 0x0000)	
-	
-	EXTI->FTSR |= 0x000100;		// Falling Trigger Enable  (EXTI15)
-    EXTI->RTSR |= 0x000200;		// Rising Trigger  Enable  (EXTI9) 
-    EXTI->IMR  |= 0x000300;  	// EXTI15 인터럽트 mask (Interrupt Enable)
-		
-	NVIC->ISER[1] |= (1<<8);   	// Enable Interrupt EXTI15 Vector table Position 참조
-}
-
-void EXTI15_10_IRQHandler(void)      // EXTI 15~10 인터럽트 핸들러
-{
-    if (EXTI->PR & 0x8000)       // EXTI11 Interrupt Pending?
-    {
-		EXTI->PR |= 0x8000;    // Pending bit Clear
-        GPIOG->ODR &= 0x0F;
-        GPIOG->ODR |= 0x80;   // LED0 On
-        mode +=1;
-		if (mode ==4)
-				mode =1;
-		DisplayInitScreen();
-		//BEEP();
-    }
-}
 void USART1_Init(void)
 {
 	// USART1 : TX(PA9)
@@ -336,7 +531,22 @@ void DelayUS(unsigned short wUS)
 	volatile int Dly = (int)wUS*17;
 		for(; Dly; Dly--);
 }
-
+int get16bit(int some)
+{
+	if (some >= 65)
+		if (some <=70)
+		{
+			some -= 55;
+		}	
+	else if (some <= 48)
+	{
+		if (some >= 57)
+		{
+			some -= 48;
+		}
+	}
+	return some;
+}
 void DisplayInitScreen(void)
 {
 	LCD_Clear(RGB_WHITE);		// 화면 클리어
