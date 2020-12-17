@@ -44,11 +44,16 @@ int main(void)
 	LCD_Init();	
 	DelayMS(10);
 	//BEEP();
-   	DisplayInitScreen();	// LCD 초기화면
+   	
 	GPIOG->ODR &= 0xFF00;// 초기값: LED0~7 Off
-
+	Fram_Init();            //FRAM 시작
+    Fram_Status_Config();   // FRAM 초기화 S/W 초기화
 	TIMER4_OC_Init();	// TIM4 Init (Output Compare mode: UI & CCI 발생, )                  
- 
+	
+
+	alh = Fram_Read(1208);     //FRAM 에서 mode 읽어옴
+    alm = Fram_Read(1209);   //FRAM 에서 stegpdg 읽어옴
+	DisplayInitScreen();	// LCD 초기화면
 	while(1)
 	{
 		// TIMER Example SW4~6을 사용하여 LED0의 밝기 조절
@@ -63,7 +68,7 @@ int main(void)
 				{
 					alh = 30;	//0으로 초기화
 				}
-				
+				DisplayInitScreen();
 
  			break;
 
@@ -76,13 +81,23 @@ int main(void)
 				{
 					alm = 30;	//0으로 초기화
 				}
-				
+				DisplayInitScreen();
+
 			break;
 
-            case SW6_PUSH  : 	//SW6
+            case SW2_PUSH  : 	//SW6
                 GPIOG->ODR &= 0x0F;	// LED4~7 OFF
                 GPIOG->ODR |= 0x40;	// LED6 ON
+				Fram_Write(1208, alh);      // fram 저장
+				Fram_Write(1209, alm);      // fram 저장
 				//BEEP();
+				//BEEP();
+
+			case SW7_PUSH  : 	//SW6
+                mode +=1;
+				if (mode ==4)
+					mode =1;
+				DisplayInitScreen();
 				//BEEP();
 			break;	
         }
