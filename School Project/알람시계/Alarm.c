@@ -29,7 +29,6 @@ void USART1_BRR_Configuration(uint32_t USART_BaudRate);
 void SerialSendChar_PC(uint8_t c);
 void SerialSendString_PC(char* s);
 void TIMER3_Init(void);
-int get16bit(int some);
 void _ADC_Init(void);
 void TIMER3_Init(void);
 void TIMER7_Init(void);
@@ -136,7 +135,6 @@ void USART1_IRQHandler(void)
 		ch1 = (uint16_t)(USART1->DR & (uint16_t)0x01FF);	// ????? ???? ????
 		if (CRdata_PC == 1)
 		{
-			LCD_DisplayText(3, 0, "                              ");
 			no_PC = 0;
 			CRdata_PC = 0;
 		}
@@ -146,15 +144,24 @@ void USART1_IRQHandler(void)
 		{
 			getnum++;
 			if (getnum == 1)
+			{
+				LCD_SetTextColor(RGB_RED);
 				fnum = ch1;
+				LCD_DisplayChar(1, 2, fnum);
+			}	
 			else if (getnum == 2)
-				snum == ch1;
+			{
+				LCD_SetTextColor(RGB_RED);
+				snum = ch1;
+				LCD_DisplayChar(1, 6, snum);
+			}	
 			else if (getnum == 3)
 			{
 				if (ch1 == '=')
 				{
-					fnum = get16bit(fnum);
-					snum = get16bit(snum);
+					LCD_SetTextColor(RGB_RED);
+					fnum = fnum - 0x30;
+					snum = snum - 0x30;
 					calres = fnum + snum;
 					if (calres >= 16)
 					{
@@ -163,7 +170,7 @@ void USART1_IRQHandler(void)
 						if (calres1 >= 10)
 						{
 							calres1 -= 10;
-							LCD_DisplayChar(1, 11, (calres1)+0x41);
+							LCD_DisplayChar(1, 11, (calres1)+0x43);
 						}
 						else
 						{
@@ -174,6 +181,8 @@ void USART1_IRQHandler(void)
 					}
 					else
 					{
+						calres10 =0;
+						calres1=calres;
 						if (calres1 >= 10)
 						{
 							calres1 -= 10;
@@ -638,22 +647,7 @@ void DelayUS(unsigned short wUS)
 	volatile int Dly = (int)wUS * 17;
 	for (; Dly; Dly--);
 }
-int get16bit(int some)
-{
-	if (some >= 65)
-		if (some <= 70)
-		{
-			some -= 55;
-		}
-		else if (some <= 48)
-		{
-			if (some >= 57)
-			{
-				some -= 48;
-			}
-		}
-	return some;
-}
+
 void DisplayInitScreen(void)
 {
 	LCD_Clear(RGB_WHITE);		// ??? ?????
@@ -685,7 +679,7 @@ void DisplayInitScreen(void)
 		LCD_DisplayChar(1, 10, (calres / 10) + 0x30);
 		LCD_DisplayChar(1, 11, (calres % 10) + 0x30);
 		LCD_SetTextColor(RGB_BLACK);	// ????? : Black	
-		LCD_DisplayChar(1, 4, ':');
+		LCD_DisplayChar(1, 4, '+');
 		LCD_DisplayChar(1, 8, '=');
 
 	}
