@@ -57,7 +57,7 @@ int main(void)
 	_EXTI_Init();
 	LCD_Init();
 	DelayMS(10);
-	//BEEP();
+	BEEP();
 
 	GPIOG->ODR &= 0xFF00;// : LED0~7 Off
 	Fram_Init();            //FRAM 
@@ -77,7 +77,7 @@ int main(void)
 		{
 		case SW0_PUSH: 	//SW0
 
-			//BEEP();
+			BEEP();
 			alh += 1;		//알람 시간 ++
 			if (alh == 10)	//10이 되면 16진수 A 쓰기 위해 변환  
 			{
@@ -92,7 +92,7 @@ int main(void)
 
 		case SW1_PUSH: 	//SW1
 
-			//BEEP();
+			BEEP();
 			alm += 1;
 			if (alm == 10)	//10이 되면 16진수 A 쓰기 위해 변환   
 			{
@@ -110,8 +110,8 @@ int main(void)
 
 			Fram_Write(1208, alh);      // fram 써주기
 			Fram_Write(1209, alm);      // fram 써주기
-			//BEEP();			//부저 2번 저장 알림
-			//BEEP();
+			BEEP();			//부저 2번 저장 알림
+			BEEP();
 			break;
 			DisplayInitScreen();	// LCD 
 		}
@@ -190,7 +190,7 @@ void USART1_IRQHandler(void)
 				}
 				getnum = 0;	//통신 인덱스 변수 초기화
 			}
-			//BEEP();
+			BEEP();
 		}
 
 		// PC   rxQue[1] 
@@ -278,7 +278,7 @@ void EXTI15_10_IRQHandler(void)      // EXTI 15~10
 		if (mode == 4)	//4번 째 눌렀을 때
 			mode = 1;	//1번 째로 돌아가도록 설정
 		DisplayInitScreen();
-		//BEEP();
+		BEEP();
 	}
 }
 void _ADC_Init(void)
@@ -452,6 +452,14 @@ void TIM7_IRQHandler(void)  	// 1s Interrupt
 	else if (curh == 10)	//분이 10이면 
 	{
 		curh = 17;	//분 A
+	}
+	if (curh == alh)	//알람 설정 시간과 분 같을 시
+	{
+		if (curm == alm)
+		{
+			BEEP();	//부저 2번
+			BEEP();
+		}
 	}
 	LCD_SetTextColor(RGB_BLUE);	//  : Black
 	LCD_DisplayChar(0, 15, curh + 0x30); //시간 써주기
