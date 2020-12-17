@@ -4,7 +4,7 @@
 // Compare Match Interrupt(CC1I) 발생 & OC1을 통한 Pulse 출력
 /////////////////////////////////////////////////////////////
 include "stm32f4xx.h"
-
+include "FRAM.h"
 include "GLCD.h"
 
 #define SW0_PUSH        0xFE00  //PH8
@@ -25,7 +25,17 @@ void DelayMS(unsigned short wMS);
 void DelayUS(unsigned short wUS);
 void BEEP(void);
 
-int ch=
+int curh = 0;	//현재 시간
+int curm = 0;	//현재 분
+int fnum = 0;	//첫 번째 숫자
+int snum = 0;	//두 번째 숫자
+int temp = 0;	//온도
+int h = 0;		//히터
+int c = 1;		//쿨러
+int calres = 0; //계산정답
+int mode = 1; 	//초기 알람모드
+int alh = 46;
+int alm = 41;
 
 int main(void)
 {
@@ -33,7 +43,7 @@ int main(void)
 	_EXTI_Init();
 	LCD_Init();	
 	DelayMS(10);
-	BEEP();
+	//BEEP();
    	DisplayInitScreen();	// LCD 초기화면
 	GPIOG->ODR &= 0xFF00;// 초기값: LED0~7 Off
 
@@ -44,22 +54,36 @@ int main(void)
 		// TIMER Example SW4~6을 사용하여 LED0의 밝기 조절
 		switch(KEY_Scan())
 		{
-			case SW4_PUSH  : 	//SW4
-                GPIOG->ODR &= 0x0F;	// LED4~7 OFF
+			case SW0_PUSH  : 	//SW0
+                GPIOG->ODR &= 0xFF;	// LED4~7 OFF
                 GPIOG->ODR |= 0x10;	// LED4 ON
-                TIM4->CCR1 = 1000; 	// 1ms ON
+				//BEEP();
+				alh += 1;
+				if (alh == 46)	//F 넘어갈 시
+				{
+					alh = 30;	//0으로 초기화
+				}
+				
+
  			break;
 
-			case SW5_PUSH  : 	//SW5
-                GPIOG->ODR &= 0x0F;	// LED4~7 OFF
+			case SW1_PUSH  : 	//SW1
+                GPIOG->ODR &= 0xFF;	// LED4~7 OFF
                 GPIOG->ODR |= 0x20;	// LED5 ON
-                TIM4->CCR1 = 4000; 	// 4ms ON
+				//BEEP();
+				alm += 1;
+				if (alm == 46)	//F 넘어갈 시
+				{
+					alm = 30;	//0으로 초기화
+				}
+				
 			break;
 
             case SW6_PUSH  : 	//SW6
                 GPIOG->ODR &= 0x0F;	// LED4~7 OFF
                 GPIOG->ODR |= 0x40;	// LED6 ON
-                TIM4->CCR1 = 8000;  	// 8ms ON
+				//BEEP();
+				//BEEP();
 			break;	
         }
 	}
@@ -221,10 +245,52 @@ void DisplayInitScreen(void)
 	LCD_SetTextColor(RGB_BLACK);	// 글자색 : Black
 	LCD_SetPenColor(RGB_GREEN);		// 펜색 GREEN
 	LCD_DrawRectangle(1, 1, 158, 60);	// 사각형 그려주기
-	LCD_DisplayText(0,0,"1.ALARM");  
-	LCD_DisplayText(1, 0, "ALARM");
-	LCD_DisplayChar(1, 6, )
-	LCD_SetBackColor(RGB_YELLOW);	//글자배경색 : Yellow
+
+	if (mode == 1)
+	{
+		LCD_DisplayText(0,0,"1.ALARM");  
+		LCD_DisplayText(1, 0, "ALARM");
+		LCD_SetTextColor(RGB_RED);	// 글자색 : RED
+		LCD_DisplayChar(1, 6, alh);
+		LCD_DisplayChar(1, 7, ':');
+		LCD_DisplayChar(1, 8, alm);
+		LCD_SetTextColor(RGB_BLUE);	// 글자색 : BLUE
+		LCD_DisplayChar(0, 15, curh);
+		LCD_DisplayChar(0, 16, ':');
+		LCD_DisplayChar(0, 17, curm);
+	}
+	else if (mode ==2)
+	{
+		LCD_DisplayText(0,0,"2.Calculator");  
+		LCD_SetTextColor(RGB_RED);	// 글자색 : RED
+		LCD_DisplayChar(1, 2, fnum+0x30);
+		LCD_DisplayChar(1, 6, snum+0x30);
+		LCD_DisplayChar(1, 10, (calres/10)+0x30);
+		LCD_DisplayChar(1, 11, (calres%10)+0x30);
+		LCD_SetTextColor(RGB_BLACK);	// 글자색 : Black	
+		LCD_DisplayChar(1, 4, ':');
+		LCD_DisplayChar(1, 8, '=');
+		
+	}
+	else if (mode ==3)
+	{
+		LCD_SetTextColor(RGB_BLACK);	// 글자색 : Black	
+		LCD_DisplayText(0,0,"3.Thermostat");
+		LCD_DisplayText(1,0,"T:");
+		LCD_DisplayText(2,0,"H:");
+		LCD_DisplayChar(2, 4, 'C');
+		LCD_DisplayChar(2, 5, ':');
+
+		LCD_SetTextColor(RGB_GREEN);	// 글자색 : Black	
+		LCD_DisplayChar(1, 2, (tmep/10)+0x30);
+		LCD_DisplayChar(1, 3, (tmep&10)+0x30);
+
+		LCD_SetTextColor(RGB_RED);	// 글자색 : Black	
+		LCD_DisplayChar(2, 2, h+0x30);
+
+		LCD_SetTextColor(RGB_BLUE);	// 글자색 : Black	
+		LCD_DisplayChar(2, 6, c+0x30);
+	}
 }
 
 uint8_t key_flag = 0;
