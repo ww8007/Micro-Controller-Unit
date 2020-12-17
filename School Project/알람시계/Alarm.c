@@ -45,8 +45,9 @@ int mode = 1; 	//초기 알람모드
 int alh = 70;
 int alm = 65;
 int getnum = 0;
-uint16_t ADC_Value, Voltage;  //외부온도 변수
-
+int ADC_Value, Voltage;  //외부온도 변수
+int section;
+int heatorcool;
 int main(void)
 {
 	_GPIO_Init();
@@ -208,38 +209,54 @@ void ADC_IRQHandler(void)
 
     ADC_Value = ADC2->DR;      // Reading ADC result
    	Voltage = ADC_Value * (3.3 * 10) / 4095;   // 3.3 : 4095 =  Volatge : ADC_Value 
-    // 1 : 4095
-    if (Voltage <= 8)                       // 33으로 보고 판단해서 0~8 = rpm1
+    // 3.3 : Voltage = Temp : 50
+	Temp = 3.3 * 50 / Voltage;  //  0 ~50으로 표현
+    if (Temp <= 10)                       // 33으로 보고 판단해서 0~8 = rpm1
     {
-        rpm = 1;
+        h = 2;
+		c = 0;
     }
-    else if (Voltage >= 9 && Voltage <= 16)      // 33으로 보고 판단해서 9~16 = rpm2
+    else if (Temp >= 11 && Temp <= 20)      // 33으로 보고 판단해서 9~16 = section2
     {
-        rpm = 2;
+        h = 1;
+		c = 0;
     }
-    else if (Voltage >= 17 && Voltage <= 24)       // 33으로 보고 판단해서 17~24 = rpm3
+    else if (Temp >= 21 && Temp <= 30)       // 33으로 보고 판단해서 17~24 = section3
     {
-        rpm = 3;
+        h = 0;
+		c = 0;
     }
-    else if (Voltage >= 25 && Voltage <= 33)         // 33으로 보고 판단해서 24~33 = rpm4
+    else if (Temp >= 31 && Temp <= 40)         // 33으로 보고 판단해서 24~33 = section4
     {
-        rpm = 4;
+        c = 1;
+		h = 0;
     }
-}
-void TIM4_IRQHandler(void)      //RESET: 0
-{
-	if ((TIM4->SR & 0x01) != RESET)	// Update interrupt flag (10ms)
+	else if (Temp >= 41 && Temp <= 50)         // 33으로 보고 판단해서 24~33 = section4
+    {
+        c = 2;
+		h = 0;
+    }
+	if (Tmep <= 10)
 	{
-		TIM4->SR &= ~(1<<0);	// Update Interrupt Claer
-		GPIOG->ODR |= 0x01;	// LED0 On
+		LCD_SetTextColor(RGB_GREEN);	// 글자색 : Black
+		LCD_DisplayChar(1, 2, '-');	
+		LCD_DisplayChar(1, 3, (tmep/10)+0x30);
+		LCD_DisplayChar(1, 4, (tmep&10)+0x30);
 	}
-    
-	if((TIM4->SR & 0x02) != RESET)	// Capture/Compare 1 interrupt flag
+	else 
 	{
-		TIM4->SR &= ~(1<<1);	// CC 1 Interrupt Claer
-		GPIOG->ODR &= ~0x01;	// LED0 Off
+		Temp -=10;
+		LCD_SetTextColor(RGB_GREEN);	// 글자색 : Black
+		LCD_DisplayChar(1, 4, ' ');	
+		LCD_DisplayChar(1, 2, (tmep/10)+0x30);
+		LCD_DisplayChar(1, 3, (tmep&10)+0x30);
 	}
+	LCD_SetTextColor(RGB_RED);	// 글자색 : RED	
+	LCD_DisplayChar(2, 2, h+0x30);
+	LCD_SetTextColor(RGB_BLUE);	// 글자색 : Black	
+	LCD_DisplayChar(2, 6, c+0x30);
 }
+
 void EXTI15_10_IRQHandler(void)      // EXTI 15~10 인터럽트 핸들러
 {
     if (EXTI->PR & 0x8000)       // EXTI11 Interrupt Pending?
@@ -363,72 +380,144 @@ void TIM3_IRQHandler(void)  	// 1ms Interrupt
     
 	ADC2->CR2 |= (1 << 0);      // ADC2ON: ADC ON
 }
-void TIMER4_OC_Init(void)
+void TIMER7_Init(void)
 {
-// PD12: TIM4_CH1
-// PD12을 출력설정하고 Alternate function(TIM4_CH1)으로 사용 선언
-	RCC->AHB1ENR	|= (1<<3);	// 0x08, RCC_AHB1ENR GPIOD Enable : AHB1ENR.3
-
-	GPIOD->MODER    |= (2<<24);	// 0x02000000(MODER.(25,24)=0b10), GPIOD PIN12 Output Alternate function mode 					
-	GPIOD->OSPEEDR 	|= (3<<24);	// 0x03000000(OSPEEDER.(25,24)=0b11), GPIOD PIN12 Output speed (100MHz High speed)
-	GPIOD->OTYPER	&= ~(1<<12);	// ~0x1000, GPIOD PIN12 Output type push-pull (reset state)
-	GPIOD->PUPDR    |= (1<<24); 	// 0x01000000, GPIOD PIN12 Pull-up
-  					// PD12 ==> TIM4_CH1
-	GPIOD->AFR[1]	|= 0x00020000;  // (AFR[1].(19~16)=0b0010): Connect TIM4 pins(PD12) to AF2(TIM3..5)
- 
-// Timerbase 설정
-	RCC->APB1ENR |= (1<<2);	// 0x04, RCC_APB1ENR TIMER4 Enable
+	RCC->APB1ENR |= 0x02;	// RCC_APB1ENR TIMER3 Enable
 
 	// Setting CR1 : 0x0000 
-	TIM4->CR1 &= ~(1<<4);	// DIR=0(Up counter)(reset state)
-	TIM4->CR1 &= ~(1<<1);	// UDIS=0(Update event Enabled): By one of following events
+	TIM7->CR1 &= ~(1<<4);  // DIR=0(Up counter)(reset state)
+	TIM7->CR1 &= ~(1<<1);	// UDIS=0(Update event Enabled): By one of following events
                             //  Counter Overflow/Underflow, 
                             //  Setting the UG bit Set,
                             //  Update Generation through the slave mode controller 
                             // UDIS=1 : Only Update event Enabled by  Counter Overflow/Underflow,
-	TIM4->CR1 &= ~(1<<2);	// URS=0(Update event source Selection): one of following events
+	TIM7->CR1 &= ~(1<<2);	// URS=0(Update Request Source  Selection):  By one of following events
                             //	Counter Overflow/Underflow, 
                             // Setting the UG bit Set,
                             //	Update Generation through the slave mode controller 
                             // URS=1 : Only Update Interrupt generated  By  Counter Overflow/Underflow,
-	TIM4->CR1 &= ~(1<<3);	// OPM=0(The counter is NOT stopped at update event) (reset state)
-	TIM4->CR1 &= ~(1<<7);	// ARPE=0(ARR is NOT buffered) (reset state)
-	TIM4->CR1 &= ~(3<<8); 	// CKD(Clock division)=00(reset state)
-	TIM4->CR1 &= ~(3<<5); 	// CMS(Center-aligned mode Sel)=00 (Edge-aligned mode) (reset state)
-				// Center-aligned mode: The counter counts Up and DOWN alternatively
+	TIM7->CR1 &= ~(1<<3);	// OPM=0(The counter is NOT stopped at update event) (reset state)
+	TIM7->CR1 &= ~(1<<7);	// ARPE=0(ARR is NOT buffered) (reset state)
+	TIM7->CR1 &= ~(3<<8); 	// CKD(Clock division)=00(reset state)
+	TIM7->CR1 &= ~(3<<5); 	// CMS(Center-aligned mode Sel)=00 (Edge-aligned mode) (reset state)
+                            // Center-aligned mode: The counter counts UP and DOWN alternatively
 
-	// Setting the Period
-	TIM4->PSC = 8400-1;	// Prescaler=84, 84MHz/8400 = 1KHz (0.1ms)
-	TIM4->ARR = 10000-1;	// Auto reload  : 0.1ms * 10K = 1s(period) : 인터럽트주기나 출력신호의 주기 결정
 
-	// Update(Clear) the Counter
-	TIM4->EGR |= (1<<0);    // UG: Update generation    
+    // Deciding the Period
+	TIM7->PSC = 8400-1;	// Prescaler=84, 84MHz/8400 = 1KHz (0.1ms)
+	TIM7->ARR = 10000-1;	// Auto reload  : 0.1ms * 10K = 1s(period) : 인터럽트주기나 출력신호의 주기 결정
 
-// Output Compare 설정
-	// CCMR1(Capture/Compare Mode Register 1) : Setting the MODE of Ch1 or Ch2
-	TIM4->CCMR1 &= ~(3<<0); // CC1S(CC1 channel) = '0b00' : Output 
-	TIM4->CCMR1 &= ~(1<<2); // OC1FE=0: Output Compare 1 Fast disable 
-	TIM4->CCMR1 &= ~(1<<3); // OC1PE=0: Output Compare 1 preload disable(CCR1에 언제든지 새로운 값을 loading 가능) 
-	TIM4->CCMR1 |= (3<<4);	// OC1M=0b011 (Output Compare 1 Mode : toggle)
-				// OC1REF toggles when CNT = CCR1
-				
-	// CCER(Capture/Compare Enable Register) : Enable "Channel 1" 
-	TIM4->CCER |= (1<<0);	// CC1E=1: CC1 channel Output Enable
-				// OC1(TIM4_CH1) Active: 해당핀(100번)을 통해 신호출력
-	TIM4->CCER &= ~(1<<1);	// CC1P=0: CC1 channel Output Polarity (OCPolarity_High : OC1으로 반전없이 출력)  
+   	// Clear the Counter
+	TIM7->EGR |= (1<<0);	// UG(Update generation)=1 
+                        // Re-initialize the counter(CNT=0) & generates an update of registers   
+	TIM7 ->EGR |= (1<<1); 	// CC1G(C/C 1 gerneration)						
+	TIM7->DIER |= (1<<1)	// TIMER 3 CC1 INTERUPT EN
+	// Setting an UI(UEV) Interrupt 
+	NVIC->ISER[0] |= (1<<29); // Enable Timer3 global Interrupt
+ 	TIM7->DIER |= (1<<0);	// Enable the TIM7 Update interrupt
 
-	// CC1I(CC 인터럽트) 인터럽트 발생시각 또는 신호변화(토글)시기 결정: 신호의 위상(phase) 결정
-	// 인터럽트 발생시간(10000 펄스)의 10%(1000) 시각에서 compare match 발생
-	TIM4->CCR1 = 1000;	// TIM4 CCR1 TIM4_Pulse
-
-	TIM4->DIER |= (1<<0);	// UIE: Enable Tim4 Update interrupt
-	TIM4->DIER |= (1<<1);	// CC1IE: Enable the Tim4 CC1 interrupt
-
-	NVIC->ISER[0] 	|= (1<<30);	// Enable Timer4 global Interrupt on NVIC
-
-	TIM4->CR1 |= (1<<0);	// CEN: Enable the Tim4 Counter  					
+	TIM7->CR1 |= (1<<0);	// Enable the TIM7 Counter (clock enable)   
 }
 
+void TIM7_IRQHandler(void)  	// 1ms Interrupt
+{
+    
+	TIM7->SR &= ~(1<<0);	// Interrupt flag Clear
+	curm++;
+    if (curm == 71)
+	{
+		curh++;
+		curm = 30;
+	}
+	else if (curm == 58)
+	{
+		curm = 65;
+	}
+	if (curh == 71)
+	{
+		curh = 30;
+	}
+	else if (curh == 58)
+	{
+		curh = 65;
+	}	
+	LCD_SetTextColor(RGB_BLUE);	// 글자색 : Black
+	LCD_DisplayChar(0, 15, curh);
+	LCD_DisplayChar(0, 16, ':');
+	LCD_DisplayChar(0, 17, curm);
+}
+void TIMER4_PWM_Init(void)
+{   
+// TIM4 CH1 : PB6 (164번 핀)
+// Clock Enable : GPIOB & TIMER4
+	RCC->AHB1ENR	|= (1<<1);	// GPIOB CLOCK Enable
+	RCC->APB1ENR 	|= (1<<2);	// TIMER4 CLOCK Enable 
+    						
+// PB8을 출력설정하고 Alternate function(TIM4_CH3)으로 사용 선언 : PWM 출력
+	GPIOB->MODER 	|= (2<<12);	// 0x00020000 PB8 Output Alternate function mode					
+	GPIOB->OSPEEDR 	|= (3<<12);	// 0x00030000 PB8 Output speed (100MHz High speed)
+	GPIOB->OTYPER	&= ~(1<<8);	// PB8 Output type push-pull (reset state)
+ 	GPIOB->AFR[0]	|= (2<<24);	// 0x00000002 (AFR[1].(3~0)=0b0010): Connect TIM4 pins(PB8) to AF2(TIM3..5)
+    
+// TIM4 Channel 3 : PWM 1 mode
+	// Assign 'PWM Pulse Period'
+	TIM4->PSC	= 8400-1;	// Prescaler 84,000,000Hz/8400 = 10,000 Hz(0.1ms)  (1~65536)
+	TIM4->ARR	= 20000-1;	// Auto reload  (0.1ms * 20000 = 2s : PWM Period)
+
+	// Setting CR1 : 0x0000 (Up counting)
+	TIM4->CR1 &= ~(1<<4);	// DIR=0(Up counter)(reset state)
+	TIM4->CR1 &= ~(1<<1);	// UDIS=0(Update event Enabled)
+	TIM4->CR1 &= ~(1<<2);	// URS=0(Update event source Selection)g events
+	TIM4->CR1 &= ~(1<<3);	// OPM=0(The counter is NOT stopped at update event) (reset state)
+	TIM4->CR1 |= (1<<7);	// ARPE=1(ARR is buffered): ARR Preload Enable 
+	TIM4->CR1 &= ~(3<<8); 	// CKD(Clock division)=00(reset state)
+	TIM4->CR1 &= ~(3<<5); 	// CMS(Center-aligned mode Sel)=00 : Edge-aligned mode(reset state)
+	TIM4->EGR |= (1<<0);	// UG(Update generation)=1 			
+	// Define the corresponding pin by 'Output'  
+	// CCER(Capture/Compare Enable Register) : Enable "Channel 3" 
+	TIM4->CCER	|= (1<<8);	// CC3E=1: OC3(TIM4_CH3) Active(Capture/Compare 3 output enable)
+					// 해당핀(167번)을 통해 신호출력
+	TIM4->CCER	&= ~(1<<9);	// CC3P=0: CC3 Output Polarity (OCPolarity_High : OC3으로 반전없이 출력)
+
+	// Duty Ratio 
+	TIM4->CCR3	= 10;		// CCR3 value
+
+	// 'Mode' Selection : Output mode, PWM 1
+	// CCMR2(Capture/Compare Mode Register 2) : Setting the MODE of Ch3 or Ch4
+	TIM4->CCMR2 &= ~(3<<0); // CC3S(CC3 channel)= '0b00' : Output 
+	TIM4->CCMR2 |= (1<<3); 	// OC3PE=1: Output Compare 3 preload Enable
+	TIM4->CCMR2	|= (6<<4);	// OC3M=0b110: Output compare 3 mode: PWM 1 mode
+	TIM4->CCMR2	|= (1<<7);	// OC3CE=1: Output compare 3 Clear enable
+	
+	//Counter TIM5 enable
+	TIM4->CR1	|= (1<<0);	// CEN: Counter TIM4 enable
+}
+void TIM4_IRQHandler(void)      //RESET: 0
+{
+	if ((TIM4->SR & 0x01) != RESET)	// Update interrupt flag (10ms)
+	{
+		TIM4->SR &= ~(1<<0);	// Update Interrupt Claer
+		GPIOG->ODR |= 0x01;	// LED0 On
+		if (h == 1)
+		{
+			TIM4->CCR3 = 10;		// DR: 10%
+		}
+		else if (h == 2)
+		{	
+			TIM4->CCR3 = 90;		// DR: 90%
+		}
+		else if (c == 1)
+		{
+			TIM4->CCR3 = 10;		// DR: 10%
+		}
+		else if (c == 2)
+		{
+			TIM4->CCR3 = 90;		// DR: 90%
+		}
+	}
+    
+	
+}
 void USART1_Init(void)
 {
 	// USART1 : TX(PA9)
@@ -595,7 +684,7 @@ void DisplayInitScreen(void)
 		LCD_DisplayChar(1, 2, (tmep/10)+0x30);
 		LCD_DisplayChar(1, 3, (tmep&10)+0x30);
 
-		LCD_SetTextColor(RGB_RED);	// 글자색 : Black	
+		LCD_SetTextColor(RGB_RED);	// 글자색 : RED	
 		LCD_DisplayChar(2, 2, h+0x30);
 
 		LCD_SetTextColor(RGB_BLUE);	// 글자색 : Black	
