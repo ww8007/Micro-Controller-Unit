@@ -78,8 +78,7 @@ int main(void)
 		switch (KEY_Scan())
 		{
 		case SW0_PUSH: 	//SW0
-			GPIOG->ODR &= 0xFF;	// LED4~7 OFF
-			GPIOG->ODR |= 0x10;	// LED4 ON
+			
 			//BEEP();
 			alh += 1;
 			if (alh == 10)	//F ??? ??
@@ -95,8 +94,7 @@ int main(void)
 			break;
 
 		case SW1_PUSH: 	//SW1
-			GPIOG->ODR &= 0xFF;	// LED4~7 OFF
-			GPIOG->ODR |= 0x20;	// LED5 ON
+			
 			//BEEP();
 			alm += 1;
 			if (alm == 10)	//F ??? ??
@@ -112,8 +110,7 @@ int main(void)
 			break;
 
 		case SW2_PUSH: 	//SW6
-			GPIOG->ODR &= 0x0F;	// LED4~7 OFF
-			GPIOG->ODR |= 0x40;	// LED6 ON
+			
 			Fram_Write(1208, alh);      // fram ????
 			Fram_Write(1209, alm);      // fram ????
 			//BEEP();
@@ -506,7 +503,7 @@ void TIMER4_PWM_Init(void)
 	TIM4->CCER &= ~(1 << 1);	// CC3P=0: CC3 Output Polarity (OCPolarity_High : OC3???? ???????? ???)
 
 	// Duty Ratio 
-	TIM4->CCR3 = 2000;		// CCR3 value
+	TIM4->CCR3 = 10;		// CCR3 value
 
 	// 'Mode' Selection : Output mode, PWM 1
 	// CCMR2(Capture/Compare Mode Register 2) : Setting the MODE of Ch3 or Ch4
@@ -669,6 +666,10 @@ void DisplayInitScreen(void)
 		LCD_DisplayChar(0, 15, curh+0x30);
 		LCD_DisplayChar(0, 16, ':');
 		LCD_DisplayChar(0, 17, curm+0x30);
+		LCD_SetTextColor(RGB_BLUE);	// ????? : Black
+		LCD_DisplayChar(0, 15, curh+0x30);
+		LCD_DisplayChar(0, 16, ':');
+		LCD_DisplayChar(0, 17, curm+0x30);
 	}
 	else if (mode == 2)
 	{
@@ -681,7 +682,10 @@ void DisplayInitScreen(void)
 		LCD_SetTextColor(RGB_BLACK);	// ????? : Black	
 		LCD_DisplayChar(1, 4, '+');
 		LCD_DisplayChar(1, 8, '=');
-
+		LCD_SetTextColor(RGB_BLUE);	// ????? : Black
+		LCD_DisplayChar(0, 15, curh+0x30);
+		LCD_DisplayChar(0, 16, ':');
+		LCD_DisplayChar(0, 17, curm+0x30);
 	}
 	else if (mode == 3)
 	{
@@ -701,6 +705,10 @@ void DisplayInitScreen(void)
 
 		LCD_SetTextColor(RGB_BLUE);	// ????? : Black	
 		LCD_DisplayChar(2, 6, c + 0x30);
+		LCD_SetTextColor(RGB_BLUE);	// ????? : Black
+		LCD_DisplayChar(0, 15, curh+0x30);
+		LCD_DisplayChar(0, 16, ':');
+		LCD_DisplayChar(0, 17, curm+0x30);
 	}
 }
 
