@@ -140,12 +140,14 @@ void USART1_IRQHandler(void)
 				LCD_SetTextColor(RGB_RED);	//글자색 빨강
 				fnum = ch1;		//받아온 숫자 -> fnum에 저장
 				LCD_DisplayChar(1, 2, fnum);	//글자 써주기
+				BEEP();	//부저한번
 			}
 			else if (getnum == 2)	//두번 째 자리 들어 왓을 때
 			{
 				LCD_SetTextColor(RGB_RED);	//글자색 빨강
 				snum = ch1;	//받아온 숫자 -> snum에 저장
 				LCD_DisplayChar(1, 6, snum);
+				BEEP();	//부저한번
 			}
 			else if (getnum == 3)	//3번 째 자리 들어 왔을 때
 			{
@@ -185,12 +187,12 @@ void USART1_IRQHandler(void)
 							LCD_DisplayChar(1, 11, (calres1)+0x30);
 						}
 						LCD_DisplayChar(1, 10, (calres10)+0x30);
-
+						BEEP();	//부저한번
 					}
 				}
 				getnum = 0;	//통신 인덱스 변수 초기화
 			}
-			BEEP();
+			
 		}
 
 		// PC   rxQue[1] 
@@ -265,6 +267,26 @@ void ADC_IRQHandler(void)
 	LCD_DisplayChar(2, 2, h + 0x30);	//히터 쿨러 써주기
 	LCD_SetTextColor(RGB_BLUE);	//  : Black	
 	LCD_DisplayChar(2, 6, c + 0x30);	//히터 쿨러 써주기
+	
+	if (mode == 3)
+	{
+		if (h == 1)	//히터 1
+		{
+			TIM4->CCR1 = 2000;		// DR: 10%
+		}
+		else if (h == 2) //히터 2
+		{
+			TIM4->CCR1 = 18000;		// DR: 90%
+		}
+		else if (c == 1)	//쿨러 1
+		{
+			TIM4->CCR1 = 2000;		// DR: 10%
+		}
+		else if (c == 2) // 쿨러 2
+		{
+			TIM4->CCR1 = 18000;		// DR: 90%
+		}
+	}
 }
 
 void EXTI15_10_IRQHandler(void)      // EXTI 15~10  
@@ -307,7 +329,7 @@ void _ADC_Init(void)
 	//Channel selection, The Conversion Sequence of PIN1(ADC2_CH0) is first, Config sequence Range is possible from 0 to 17
 	ADC2->SQR3 |= (1 << 0);   // SQ1[4:0]=0b0000 : CH1
 	NVIC->ISER[0] |= (1 << 18);   // Enable ADC global Interrupt
-
+	ADC2->CR2 |= (1 << 0);      // ADON: ADC ON
 }
 void _GPIO_Init(void)
 {
@@ -457,8 +479,9 @@ void TIM7_IRQHandler(void)  	// 1s Interrupt
 	{
 		if (curm == alm)
 		{
-			BEEP();	//부저 2번
+			BEEP();	//부저 3번
 			BEEP();
+			BEEP();	
 		}
 	}
 	LCD_SetTextColor(RGB_BLUE);	//  : Black
@@ -500,7 +523,7 @@ void TIMER4_PWM_Init(void)
 	TIM4->CCER &= ~(1 << 1);	// CC3P=0: CC3 Output Polarity (OCPolarity_High : OC3  )
 
 	// Duty Ratio 
-	TIM4->CCR3 = 10;		// CCR3 value
+	TIM4->CCR3 = 2000;		// CCR3 value
 
 	// 'Mode' Selection : Output mode, PWM 1
 	// CCMR2(Capture/Compare Mode Register 2) : Setting the MODE of Ch3 or Ch4
@@ -518,22 +541,7 @@ void TIM4_IRQHandler(void)      //RESET: 0
 	{
 		TIM4->SR &= ~(1 << 0);	// Update Interrupt Claer
 		GPIOG->ODR |= 0x01;	// LED0 On
-		if (h == 1)	//히터 1
-		{
-			TIM4->CCR1 = 10;		// DR: 10%
-		}
-		else if (h == 2) //히터 2
-		{
-			TIM4->CCR1 = 90;		// DR: 90%
-		}
-		else if (c == 1)	//쿨러 1
-		{
-			TIM4->CCR1 = 10;		// DR: 10%
-		}
-		else if (c == 2) // 쿨러 2
-		{
-			TIM4->CCR1 = 90;		// DR: 90%
-		}
+		
 	}
 
 
