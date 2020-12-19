@@ -71,11 +71,11 @@
         체크는 Polling 또는 INT
             Polling 시 자동으로 EOC flags 읽어옴
             INT 시 NVIC 설정
-    5. 외부트리거에 의한 변환 시작
-        ADCx->CR2.EXTSEL[3:0]
-    ![image](https://user-images.githubusercontent.com/54137044/102693741-321d3280-4260-11eb-8532-12037545f086.png)
-    6. 외부트리거 신호 탐지
+    5. 외부트리거 신호 탐지
         ADCx->CR2.EXTEN[1:0] = 0x0;
+    6. 외부트리거에 의한 변환 시작
+        ADCx->CR2.EXTSEL[3:0]
+![image](https://user-images.githubusercontent.com/54137044/102693741-321d3280-4260-11eb-8532-12037545f086.png)    
 ### 주요 레지스터
     1. ADC_SR  : EOC(END OF CONVERSION)
     2. ADC_CR1
